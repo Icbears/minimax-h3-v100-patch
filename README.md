@@ -1,5 +1,7 @@
 # MiniMax H3 V100 mixed-precision patchers
 
+English | [简体中文](README_zh-CN.md)
+
 Two version-gated installers for the tested MiniMax H3 V100 mixed-precision profile:
 
 - `patch_te_v100.bat` patches a `model.py` that already contains the TE-Speed `block_loop` hooks.
@@ -13,15 +15,14 @@ Do **not** run both patchers on the same file. Each patcher detects the target l
 
 Test case supplied by the V100 tester: 0.2 MP, 5 s, 24 fps.
 
+Test environment: Windows 10, NVIDIA Tesla V100 32 GB, with the GPU power limit set to 150 W. The baseline already included the TE-Speed optimization. Better cooling and a higher power limit may provide additional performance; operation at 300 W is expected to be faster, but has not yet been benchmarked and is not included in the results below.
+
 | Profile | Time | Change from baseline | Result |
 |---|---:|---:|---|
-| Original baseline | 317 s | — | Passed |
-| Plan 1: FP16 attention kernel only | 260 s | 18.0% faster / 1.22x | Passed |
-| **Plan 2: FP16 QKV + attention, FP32 Q/K norm/RoPE/residual** | **206 s** | **35.0% faster / 1.54x** | **Passed** |
-| Plan 3: alternating FP16 attention-output/MLP GEMMs | — | — | Failed |
-| Plan 4: all-block FP16 attention-output/MLP GEMMs | — | — | Failed |
+| TE-Speed baseline | 317 s | — | Passed |
+| **MiniMax H3 V100 mixed-precision patch** | **206 s** | **35.0% faster / 1.54x** | **Passed** |
 
-These patchers install the successful **Plan 2** profile. Results are workload-, backend- and build-dependent; 1.54x is the measured example, not a universal guarantee.
+These patchers install the tested **MiniMax H3 V100 mixed-precision patch**. Results are workload-, backend- and build-dependent; 1.54x is the measured example, not a universal guarantee.
 
 ## Precision split
 
@@ -82,15 +83,6 @@ Safety behavior:
 - Repeated patch calls are idempotent.
 - `--revert` works only when the active file is recognized as V100-patched and its matching clean backup is valid.
 - The dedicated restore BATs call that same guarded `--revert` path; they do not perform an unchecked file copy.
-
-## Known supplied builds
-
-| Variant | Supplied input SHA-256 | Expected patched SHA-256 |
-|---|---|---|
-| Official/origin H3 | `882c280b05aa60cd17f231e5e2389b921b52880fb3b4e23574c0aba5f2bd5024` | `ff86e416f7fb25d9cb68ceda6fb3e63f95e919db51c019a5a570171bbcd28b78` |
-| TE-hooked H3 | `1f95147e69215d7b015e553ef20be20a766291feded683cd953d403c433b7a93` | `53167a18ad0872d26a9e3502b9a6bc7c135bb10034c60f68e4ad9e93a93d55c6` |
-
-An unknown whole-file hash may still be accepted only when all exact structural and Attention anchors match. A changed Attention implementation is refused and must be reviewed manually.
 
 ## Benchmarking guidance
 

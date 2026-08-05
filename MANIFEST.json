@@ -1,6 +1,6 @@
 {
   "package": "minimax-h3-v100-mixed-precision-patchers",
-  "profile": "Plan 2: QKV and attention FP16; Q/K RMSNorm, RoPE, output projection, MLP and residual FP32",
+  "profile": "MiniMax H3 V100 mixed-precision patch: QKV and attention FP16; Q/K RMSNorm, RoPE, output projection, MLP and residual FP32",
   "generated_date": "2026-08-05",
   "files": {
     ".gitignore": {
@@ -36,8 +36,12 @@
       "sha256": "578c4c643f69ea0070c6655aa1080f7fd6ca3ce48e3556ddb5012ae47a54df4d"
     },
     "README.md": {
-      "bytes": 6015,
-      "sha256": "98baca514a0afd701b7b4a8af0b2c72632ea757db20097f85e798f22907ca447"
+      "bytes": 5566,
+      "sha256": "fd33a147e52c5d4e3b012db25c9b449b49b95bd0ee46f1b127689426caf1bf3f"
+    },
+    "README_zh-CN.md": {
+      "bytes": 5615,
+      "sha256": "549dd43b09d9a26999fdf7ccdfbc0a12971bc2ba83df17b44a7433d1656ab27a"
     },
     "restore_h3_origin_v100.bat": {
       "bytes": 198,
