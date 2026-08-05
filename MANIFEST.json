@@ -1,0 +1,59 @@
+{
+  "package": "minimax-h3-v100-mixed-precision-patchers",
+  "profile": "Plan 2: QKV and attention FP16; Q/K RMSNorm, RoPE, output projection, MLP and residual FP32",
+  "generated_date": "2026-08-05",
+  "files": {
+    ".gitignore": {
+      "bytes": 49,
+      "sha256": "32a99b5d87c2e051b31a9deca3e7be4f8d42483b03a4146b402ef24bf2cab8d5"
+    },
+    "_patch_core.py": {
+      "bytes": 16787,
+      "sha256": "4305b3945fd494d9d34d4d903e09808f270e0c8281ed89724b287f87e5c1f9f1"
+    },
+    "LICENSE": {
+      "bytes": 35149,
+      "sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986"
+    },
+    "NOTICE.md": {
+      "bytes": 1813,
+      "sha256": "a9f3bb10ded5f11dc7512552046fad84a674974b87f94a3c6e648194084866d1"
+    },
+    "patch_h3_origin_v100.bat": {
+      "bytes": 902,
+      "sha256": "dd77d19710c5c7b57006465760a2c27b7a0bb3e8583066e512f05175fbd97e6e"
+    },
+    "patch_h3_origin_v100.py": {
+      "bytes": 226,
+      "sha256": "70d676dde67ae85154a9a2f7988d1f0f10c7e8ad4099061444b81ba42b7c4762"
+    },
+    "patch_te_v100.bat": {
+      "bytes": 895,
+      "sha256": "6b1dfec1d752b1dfe3bda34d891d334d1dcb1316578fac46a6ecfdb9f9b84a06"
+    },
+    "patch_te_v100.py": {
+      "bytes": 222,
+      "sha256": "578c4c643f69ea0070c6655aa1080f7fd6ca3ce48e3556ddb5012ae47a54df4d"
+    },
+    "README.md": {
+      "bytes": 6015,
+      "sha256": "98baca514a0afd701b7b4a8af0b2c72632ea757db20097f85e798f22907ca447"
+    },
+    "restore_h3_origin_v100.bat": {
+      "bytes": 198,
+      "sha256": "9b7595e2fdfcb0b1fd53eaac6dff61509af440c71fda51ecd5494128e3fa8b5d"
+    },
+    "restore_te_v100.bat": {
+      "bytes": 191,
+      "sha256": "19dcb0f3c07352dd49dc7f9a2f2d8b15e412e2c87a879f09ec260c25782cd0dc"
+    }
+  },
+  "known_inputs": {
+    "origin_sha256": "882c280b05aa60cd17f231e5e2389b921b52880fb3b4e23574c0aba5f2bd5024",
+    "te_sha256": "1f95147e69215d7b015e553ef20be20a766291feded683cd953d403c433b7a93"
+  },
+  "known_outputs": {
+    "origin_sha256": "ff86e416f7fb25d9cb68ceda6fb3e63f95e919db51c019a5a570171bbcd28b78",
+    "te_sha256": "53167a18ad0872d26a9e3502b9a6bc7c135bb10034c60f68e4ad9e93a93d55c6"
+  }
+}
