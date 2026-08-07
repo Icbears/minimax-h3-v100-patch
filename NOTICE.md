@@ -17,6 +17,13 @@
 
 The supplied origin and TE H3 files differ only by the TE-Speed `_run_blocks(start, end)` method and `("block_loop", 0)` forward hook. Their Attention implementation is identical before this V100 patch.
 
+## Bundled V100 source snapshots
+
+- `sources/origin_v100/model.py` contains the supported official/origin structure with the tested V100 Plan 2 precision patch applied.
+- `sources/te_v100/model.py` contains the verified TE-Speed hooks with the same V100 Plan 2 precision patch applied.
+
+The bundled files reproduce the installer-generated output hashes recorded in `MANIFEST.json`: `ff86e416...` for origin and `24c3a267...` for TE promoted from origin. Python AST parsing, variant detection and V100 patch-marker validation are run against both bundled files.
+
 ## Precision selection evidence
 
 The published patch is the V100-tested Plan 2 profile:
@@ -37,8 +44,8 @@ Validated on isolated copies of both supplied files:
 - Patch plus Python AST parse.
 - Patched origin and TE `Attention.forward` and `MiniMaxH3Model.__init__` ASTs are identical to the V100-tested Plan 2 file.
 - Repeated invocation produces no byte changes.
-- Each wrong-target patcher exits nonzero without modifying either file.
-- `--revert` restores the exact original SHA-256.
+- The origin patcher rejects TE input; the TE patcher safely promotes the verified origin input before applying the V100 patch.
+- `--revert` restores the exact pre-install SHA-256, including origin input promoted by the TE patcher.
 - Both patch BAT launchers, both dedicated restore BAT launchers and drag-and-drop positional path parsing were exercised.
 
 The development machine did not contain a V100, so the performance claim comes from the tester's V100 run rather than a local rerun.
