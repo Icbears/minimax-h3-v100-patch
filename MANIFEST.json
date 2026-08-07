@@ -1,55 +1,63 @@
 {
   "package": "minimax-h3-v100-mixed-precision-patchers",
   "profile": "MiniMax H3 V100 mixed-precision patch: QKV and attention FP16; Q/K RMSNorm, RoPE, output projection, MLP and residual FP32",
-  "generated_date": "2026-08-05",
+  "generated_date": "2026-08-07",
   "files": {
     ".gitignore": {
       "bytes": 49,
       "sha256": "32a99b5d87c2e051b31a9deca3e7be4f8d42483b03a4146b402ef24bf2cab8d5"
     },
     "_patch_core.py": {
-      "bytes": 16787,
-      "sha256": "4305b3945fd494d9d34d4d903e09808f270e0c8281ed89724b287f87e5c1f9f1"
+      "bytes": 23486,
+      "sha256": "1d43ae7bb407c3c6fc50a3e3de2298b3043be89bcd7d477df6e272a7c6001e39"
     },
     "LICENSE": {
       "bytes": 35149,
       "sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986"
     },
     "NOTICE.md": {
-      "bytes": 1813,
-      "sha256": "a9f3bb10ded5f11dc7512552046fad84a674974b87f94a3c6e648194084866d1"
+      "bytes": 2484,
+      "sha256": "ea67bf7445e830591546f51ee5518e1d9f18ff677c3d1b0171da725881b0a52f"
     },
     "patch_h3_origin_v100.bat": {
-      "bytes": 902,
-      "sha256": "dd77d19710c5c7b57006465760a2c27b7a0bb3e8583066e512f05175fbd97e6e"
+      "bytes": 1323,
+      "sha256": "d808ba779622b20e2752895ce7e17ab56ca8d134ac0e6fe788f3abbc2111c8c3"
     },
     "patch_h3_origin_v100.py": {
       "bytes": 226,
       "sha256": "70d676dde67ae85154a9a2f7988d1f0f10c7e8ad4099061444b81ba42b7c4762"
     },
     "patch_te_v100.bat": {
-      "bytes": 895,
-      "sha256": "6b1dfec1d752b1dfe3bda34d891d334d1dcb1316578fac46a6ecfdb9f9b84a06"
+      "bytes": 1509,
+      "sha256": "7fa845c374c5ed832543f70a6bb1501035e56327bbc7a7dc821a30c43ab17382"
     },
     "patch_te_v100.py": {
-      "bytes": 222,
-      "sha256": "578c4c643f69ea0070c6655aa1080f7fd6ca3ce48e3556ddb5012ae47a54df4d"
+      "bytes": 247,
+      "sha256": "1cf4a0d4b4bad5c402bffd21b224c7d44b02aa1d3dc08c57ed9bb3c93797a784"
     },
     "README.md": {
-      "bytes": 5566,
-      "sha256": "fd33a147e52c5d4e3b012db25c9b449b49b95bd0ee46f1b127689426caf1bf3f"
+      "bytes": 7402,
+      "sha256": "511f93d594afdbfeed9f825af7fa098907e59edea5bfdc12b30cb6bc540cf0bc"
     },
     "README_zh-CN.md": {
-      "bytes": 5615,
-      "sha256": "549dd43b09d9a26999fdf7ccdfbc0a12971bc2ba83df17b44a7433d1656ab27a"
+      "bytes": 7428,
+      "sha256": "43ffb4216f3a3a0307b2e226cee0a37e54aa1f28f14081424232201b8836afa9"
     },
     "restore_h3_origin_v100.bat": {
-      "bytes": 198,
-      "sha256": "9b7595e2fdfcb0b1fd53eaac6dff61509af440c71fda51ecd5494128e3fa8b5d"
+      "bytes": 278,
+      "sha256": "3d77a96bc3122f0dddcf2ff53e8fa01d4be12a84df79f09fe17eaba3cb80d0a3"
     },
     "restore_te_v100.bat": {
-      "bytes": 191,
-      "sha256": "19dcb0f3c07352dd49dc7f9a2f2d8b15e412e2c87a879f09ec260c25782cd0dc"
+      "bytes": 1578,
+      "sha256": "97af485d1f62350e7b7bc71b60c028c91766a506d0cdad36ec389c4e1450b8a2"
+    },
+    "sources/origin_v100/model.py": {
+      "bytes": 34363,
+      "sha256": "ff86e416f7fb25d9cb68ceda6fb3e63f95e919db51c019a5a570171bbcd28b78"
+    },
+    "sources/te_v100/model.py": {
+      "bytes": 35612,
+      "sha256": "24c3a26708bd0d67f31013e483bd92cdf8d890ff10168c940e1e3532080e3f1c"
     }
   },
   "known_inputs": {
@@ -58,6 +66,7 @@
   },
   "known_outputs": {
     "origin_sha256": "ff86e416f7fb25d9cb68ceda6fb3e63f95e919db51c019a5a570171bbcd28b78",
-    "te_sha256": "53167a18ad0872d26a9e3502b9a6bc7c135bb10034c60f68e4ad9e93a93d55c6"
+    "te_sha256": "53167a18ad0872d26a9e3502b9a6bc7c135bb10034c60f68e4ad9e93a93d55c6",
+    "te_from_origin_sha256": "24c3a26708bd0d67f31013e483bd92cdf8d890ff10168c940e1e3532080e3f1c"
   }
 }

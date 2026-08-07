@@ -4,12 +4,12 @@ English | [简体中文](README_zh-CN.md)
 
 Two version-gated installers for the tested MiniMax H3 V100 mixed-precision profile:
 
-- `patch_te_v100.bat` patches a `model.py` that already contains the TE-Speed `block_loop` hooks.
+- `patch_te_v100.bat` installs the TE-Speed version. On a supported clean origin file, it first installs the verified TE-Speed `block_loop` hooks and then applies the V100 patch.
 - `patch_h3_origin_v100.bat` patches the official/origin H3 `model.py` without those TE hooks.
 - `restore_te_v100.bat` restores the exact pre-patch TE backup.
 - `restore_h3_origin_v100.bat` restores the exact pre-patch origin backup.
 
-Do **not** run both patchers on the same file. Each patcher detects the target layout and refuses the wrong variant before writing anything.
+Do **not** run both patchers on the same file. The TE installer can promote a supported clean origin file to the TE layout; the origin installer still accepts only the official origin layout.
 
 ## Measured result
 
@@ -34,16 +34,27 @@ The 50 main DiT blocks use:
 
 The patch activates only when the incoming main-block tensor is CUDA FP32. BF16 and already-FP16 paths retain the source behavior.
 
+## Bundled source files
+
+Complete V100-accelerated `model.py` sources are included for developers who want to inspect, adapt or integrate the changes into their own ComfyUI builds:
+
+- [`sources/origin_v100/model.py`](sources/origin_v100/model.py): official/origin MiniMax H3 structure plus the tested V100 Plan 2 mixed-precision acceleration; no TE-Speed `block_loop` hook.
+- [`sources/te_v100/model.py`](sources/te_v100/model.py): TE-Speed `block_loop` hooks plus the same tested V100 Plan 2 acceleration.
+
+Both sources are derived from the ComfyUI MiniMax H3 implementation introduced by commit [`57500fc`](https://github.com/Comfy-Org/ComfyUI/commit/57500fc), whose clean origin `model.py` has SHA-256 `882c280b05aa60cd17f231e5e2389b921b52880fb3b4e23574c0aba5f2bd5024`.
+
+For a matching ComfyUI build, either file can be used as a drop-in `comfy/ldm/minimax/model.py` after making a backup. For newer, older or locally modified builds, use these files as reference sources and port the Attention precision changes and, when desired, the TE block-loop hooks into the local implementation instead of blindly overwriting it. Stop ComfyUI before replacing the file and validate the resulting Python syntax and model output before production use. These source copies are provided for manual development; the guarded BAT/Python installers remain the safer option for the supported build.
+
 ## One-click Windows usage
 
 1. Stop ComfyUI.
 2. Choose the BAT matching the active `model.py`:
-   - TE-Speed hooks already installed: `patch_te_v100.bat`
+   - TE-Speed version required (clean origin or already TE-hooked): `patch_te_v100.bat`
    - Official/origin H3 file: `patch_h3_origin_v100.bat`
-3. Drag `ComfyUI\comfy\ldm\minimax\model.py` onto the selected BAT file.
+3. Double-click the selected BAT. This customized build defaults to `C:\Users\Administrator\ComfyUI-Installs\ComfyUI\ComfyUI\comfy\ldm\minimax\model.py`; another `model.py` can still be dragged onto the BAT.
 4. Check that the console reports `Patched SHA-256`, then restart ComfyUI.
 
-To return to the pre-patch file, stop ComfyUI and drag the active `model.py` onto the matching restore BAT. The restore script validates the active variant, V100 patch markers and matching clean backup before it writes anything.
+To return to the pre-patch file, stop ComfyUI and run the matching restore BAT. If TE installation started from origin, `restore_te_v100.bat` restores that exact origin file; if it started from an existing TE file, it restores that exact TE file.
 
 The BAT launchers try, in order: `COMFYUI_PYTHON`, a nearby portable `python_embeded\python.exe`, the Windows `py -3` launcher, then `python` from `PATH`.
 
@@ -68,12 +79,12 @@ The scripts can also auto-locate common ComfyUI/portable layouts when launched f
 
 Before the first write, the installers make an exact adjacent backup:
 
-- TE variant: `model.py.v100_te.bak`
+- TE variant: `model.py.v100_te.bak` (the exact pre-install file, which may be origin or TE)
 - Origin variant: `model.py.v100_origin.bak`
 
 Safety behavior:
 
-- Exact TE/origin layout detection before patching.
+- Exact TE/origin layout detection before patching; origin-to-TE promotion runs only when both verified TE conversion anchors match.
 - Exact supported `Attention.forward` anchor required.
 - Refuses partial TE hooks, partial V100 patches and wrong-target patchers.
 - Refuses to overwrite a differing/stale backup.

@@ -51,6 +51,70 @@ PATCH_METHOD_MARKER = 'getattr(self, "fp16_qkv", False)'
 PATCH_FLAG_MARKER = "            block.attn.fp16_qkv = True"
 FINAL_LAYER_MARKER = "        self.final_layer = FinalLayer("
 
+TE_FORWARD_ANCHOR = '''    def forward(self, x, timestep, context, transformer_options={}, minimax_payload=None, **kwargs):
+'''
+
+TE_RUN_BLOCKS_METHOD = '''    def _run_blocks(self, h, t_emb, mod_segments, rope_freqs, transformer_options, start=0, end=None):
+        patches_replace = transformer_options.get("patches_replace", {})
+        blocks_replace = patches_replace.get("dit", {})
+        end = len(self.blocks) if end is None else end
+        prefetch_queue = comfy.model_prefetch.make_prefetch_queue(list(self.blocks[start:end]), h.device, transformer_options)
+        for i in range(start, end):
+            block = self.blocks[i]
+            comfy.model_prefetch.prefetch_queue_pop(prefetch_queue, h.device, block)
+            if ("double_block", i) in blocks_replace:
+                def block_wrap(args):
+                    return {"img": block(args["img"], args["t_emb"], args["mod_segments"], args["rope_freqs"],
+                                         transformer_options=args["transformer_options"])}
+                h = blocks_replace[("double_block", i)](
+                    {"img": h, "t_emb": t_emb, "mod_segments": mod_segments, "rope_freqs": rope_freqs,
+                     "transformer_options": transformer_options},
+                    {"original_block": block_wrap})["img"]
+            else:
+                h = block(h, t_emb, mod_segments, rope_freqs, transformer_options=transformer_options)
+        if prefetch_queue is not None:
+            comfy.model_prefetch.prefetch_queue_pop(prefetch_queue, h.device, None)
+        return h
+
+'''
+
+ORIGIN_BLOCK_LOOP = '''        # blocks
+        patches_replace = transformer_options.get("patches_replace", {})
+        blocks_replace = patches_replace.get("dit", {})
+        prefetch_queue = comfy.model_prefetch.make_prefetch_queue(list(self.blocks), device, transformer_options)
+        for i, block in enumerate(self.blocks):
+            comfy.model_prefetch.prefetch_queue_pop(prefetch_queue, device, block)
+            if ("double_block", i) in blocks_replace:
+                def block_wrap(args):
+                    return {"img": block(args["img"], args["t_emb"], args["mod_segments"], args["rope_freqs"],
+                                         transformer_options=args["transformer_options"])}
+                h = blocks_replace[("double_block", i)](
+                    {"img": h, "t_emb": t_emb, "mod_segments": mod_segments, "rope_freqs": rope_freqs,
+                     "transformer_options": transformer_options},
+                    {"original_block": block_wrap})["img"]
+            else:
+                h = block(h, t_emb, mod_segments, rope_freqs, transformer_options=transformer_options)
+        if prefetch_queue is not None:
+            comfy.model_prefetch.prefetch_queue_pop(prefetch_queue, device, None)
+'''
+
+TE_BLOCK_LOOP = '''        # blocks
+        # blocks (TE-Speed-MiniMaxH3-OSS hook)
+        patches_replace = transformer_options.get("patches_replace", {})
+        blocks_replace = patches_replace.get("dit", {})
+        cache_ranges = [(a, b) for a, b, kind in layout.segments if kind in ("audio", "video")]
+        if ("block_loop", 0) in blocks_replace:
+            def block_loop_wrap(args):
+                return {"img": self._run_blocks(args["img"], args["t_emb"], args["mod_segments"], args["rope_freqs"],
+                                                args["transformer_options"], args.get("start", 0), args.get("end"))}
+            h = blocks_replace[("block_loop", 0)](
+                {"img": h, "t_emb": t_emb, "mod_segments": mod_segments, "rope_freqs": rope_freqs,
+                 "transformer_options": transformer_options, "cache_ranges": cache_ranges, "block_count": len(self.blocks)},
+                {"original_block": block_loop_wrap})["img"]
+        else:
+            h = self._run_blocks(h, t_emb, mod_segments, rope_freqs, transformer_options)
+'''
+
 
 ORIGINAL_ATTENTION_METHOD = '''    def forward(self, x, rope_freqs=None, transformer_options={}):
         s = x.shape[0]
@@ -229,6 +293,25 @@ def apply_patch(text, expected_variant):
     return patched
 
 
+def install_te_hooks(text):
+    """Promote the supported clean origin layout to the TE-hooked layout."""
+    validate_target(text, "origin", allow_patched=False)
+    if text.count(TE_FORWARD_ANCHOR) != 1:
+        raise SystemExit("error: expected exactly one MiniMaxH3Model.forward anchor")
+    if text.count(ORIGIN_BLOCK_LOOP) != 1:
+        raise SystemExit(
+            "error: the origin block loop does not match the supported TE conversion; "
+            "no file was changed"
+        )
+
+    promoted = text.replace(TE_FORWARD_ANCHOR, TE_RUN_BLOCKS_METHOD + TE_FORWARD_ANCHOR, 1)
+    promoted = promoted.replace(ORIGIN_BLOCK_LOOP, TE_BLOCK_LOOP, 1)
+    ast.parse(promoted)
+    if detect_variant(promoted) != "te" or patch_state(promoted) != "unpatched":
+        raise SystemExit("error: internal origin-to-TE conversion validation failed")
+    return promoted
+
+
 def candidate_from_base(base):
     base = Path(base).expanduser()
     candidates = []
@@ -283,7 +366,7 @@ def unique_existing(candidates):
     return result
 
 
-def find_model_file(expected_variant, explicit=None):
+def find_model_file(expected_variant, explicit=None, allow_origin_to_te=False):
     if explicit:
         candidates = unique_existing(candidate_from_base(explicit))
         if not candidates:
@@ -294,13 +377,17 @@ def find_model_file(expected_variant, explicit=None):
             raw_candidates.extend(candidate_from_base(root))
         candidates = unique_existing(raw_candidates)
 
+    accepted_variants = {expected_variant}
+    if expected_variant == "te" and allow_origin_to_te:
+        accepted_variants.add("origin")
+
     matches = []
     wrong = []
     for candidate in candidates:
         try:
             _, text, _, _ = read_model(candidate)
             variant = detect_variant(text)
-            if variant == expected_variant:
+            if variant in accepted_variants:
                 matches.append(candidate)
             else:
                 wrong.append((candidate, variant))
@@ -317,7 +404,7 @@ def find_model_file(expected_variant, explicit=None):
     if wrong:
         listing = "\n  ".join("{0} ({1})".format(p, v) for p, v in wrong)
         raise SystemExit(
-            "error: found model.py files, but none is the requested {0} variant:\n  {1}"
+            "error: found model.py files, but none is a supported {0} target:\n  {1}"
             .format(expected_variant, listing)
         )
     raise SystemExit(
@@ -358,7 +445,7 @@ def print_status(target, variant, state, raw, text):
     print("Known source build: {0}".format(known_label))
 
 
-def run(expected_variant, argv=None):
+def run(expected_variant, argv=None, allow_origin_to_te=False):
     title = "TE-hooked H3" if expected_variant == "te" else "official H3 origin"
     parser = argparse.ArgumentParser(
         description="Patch {0} for the tested MiniMax H3 V100 Plan 2 precision split".format(title)
@@ -376,39 +463,69 @@ def run(expected_variant, argv=None):
     if len(explicit_values) > 1:
         raise SystemExit("error: use only one of path, --comfy-ui, or --model-file")
     explicit = explicit_values[0] if explicit_values else None
-    target = find_model_file(expected_variant, explicit)
+    target = find_model_file(expected_variant, explicit, allow_origin_to_te=allow_origin_to_te)
     backup = target.with_name(target.name + BACKUP_SUFFIX[expected_variant])
 
     raw, text, newline, has_bom = read_model(target)
-    state = validate_target(text, expected_variant)
-    print_status(target, expected_variant, state, raw, text)
+    active_variant = detect_variant(text)
+    promoting_origin = (
+        expected_variant == "te" and allow_origin_to_te and active_variant == "origin"
+    )
+    validation_variant = "origin" if promoting_origin else expected_variant
+    state = validate_target(text, validation_variant)
+    print_status(target, active_variant, state, raw, text)
+
+    if promoting_origin:
+        print("TE hook state:      origin detected; automatic TE promotion is available")
 
     if args.check:
         return 0
 
     if args.revert:
+        if promoting_origin:
+            if state == "unpatched":
+                print("Already restored to the clean origin file; no file was changed.")
+                return 0
+            raise SystemExit(
+                "error: the active origin file is not a TE patch; use restore_h3_origin_v100"
+            )
         if state != "patched":
             raise SystemExit("error: refusing to revert because the active file is not V100-patched")
         if not backup.is_file():
             raise SystemExit("error: no backup at {0}".format(backup))
         backup_raw, backup_text, _, _ = read_model(backup)
-        validate_target(backup_text, expected_variant, allow_patched=False)
+        backup_variant = detect_variant(backup_text)
+        if backup_variant not in ("origin", "te"):
+            raise SystemExit("error: backup is not a supported origin or TE model.py")
+        validate_target(backup_text, backup_variant, allow_patched=False)
         ast.parse(backup_text)
         atomic_replace(target, backup_raw)
         restored_raw, restored_text, _, _ = read_model(target)
-        validate_target(restored_text, expected_variant, allow_patched=False)
+        validate_target(restored_text, backup_variant, allow_patched=False)
         print("Restored SHA-256:   {0}".format(sha256_bytes(restored_raw)))
+        print("Restored variant:   {0}".format(backup_variant))
         print("Restored from:      {0}".format(backup))
         print("Restart ComfyUI before the next inference run.")
         return 0
 
     if state == "patched":
+        if promoting_origin:
+            raise SystemExit(
+                "error: origin V100 patch detected; restore it before installing the TE version"
+            )
         print("Already patched; no file was changed.")
         return 0
 
     if backup.is_file():
         backup_raw, backup_text, _, _ = read_model(backup)
-        validate_target(backup_text, expected_variant, allow_patched=False)
+        backup_variant = detect_variant(backup_text)
+        if backup_variant != active_variant:
+            raise SystemExit(
+                "error: existing backup is for {0}, but the active clean model is {1}. "
+                "Move the stale backup out of the way before patching: {2}"
+                .format(backup_variant, active_variant, backup)
+            )
+        validate_target(backup_text, backup_variant, allow_patched=False)
         if backup_raw != raw:
             raise SystemExit(
                 "error: existing backup differs from the active clean model. Move the stale backup "
@@ -419,7 +536,10 @@ def run(expected_variant, argv=None):
         shutil.copy2(str(target), str(backup))
         print("Backup written:     {0}".format(backup))
 
-    patched_text = apply_patch(text, expected_variant)
+    patch_source = install_te_hooks(text) if promoting_origin else text
+    if promoting_origin:
+        print("TE hooks installed:  origin -> te (in the verified output transaction)")
+    patched_text = apply_patch(patch_source, expected_variant)
     patched_raw = encode_model(patched_text, newline, has_bom)
     atomic_replace(target, patched_raw)
 
@@ -436,9 +556,9 @@ def run(expected_variant, argv=None):
     return 0
 
 
-def main(expected_variant):
+def main(expected_variant, allow_origin_to_te=False):
     try:
-        return run(expected_variant)
+        return run(expected_variant, allow_origin_to_te=allow_origin_to_te)
     except KeyboardInterrupt:
         print("error: interrupted; no further action taken", file=sys.stderr)
         return 130

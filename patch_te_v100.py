@@ -7,4 +7,4 @@ from _patch_core import main
 
 
 if __name__ == "__main__":
-    raise SystemExit(main("te"))
+    raise SystemExit(main("te", allow_origin_to_te=True))

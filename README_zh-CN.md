@@ -4,12 +4,12 @@
 
 本项目提供两个带版本识别和安全检查的安装脚本，用于安装经过 V100 实测的 MiniMax H3 混合精度方案：
 
-- `patch_te_v100.bat`：用于已经包含 TE-Speed `block_loop` 钩子的 `model.py`。
+- `patch_te_v100.bat`：用于 TE-Speed 版本；如果目标是受支持的官方 origin 文件，会先自动安装经过校验的 TE-Speed `block_loop` 钩子，再应用 V100 补丁。
 - `patch_h3_origin_v100.bat`：用于不包含 TE 钩子的官方/原版 H3 `model.py`。
 - `restore_te_v100.bat`：恢复补丁前的 TE 版精确备份。
 - `restore_h3_origin_v100.bat`：恢复补丁前的官方/原版精确备份。
 
-不要对同一个文件同时运行两个补丁。每个补丁都会先识别目标文件结构；如果选错版本，会在写入前拒绝执行。
+不要对同一个文件同时运行两个补丁。TE 安装脚本可以自动把受支持的干净 origin 文件转换为 TE 版本；origin 安装脚本仍只接受官方原版结构。
 
 ## 实测结果
 
@@ -34,16 +34,27 @@ V100 测试用例：0.2 百万像素、5 秒、24 帧率。
 
 补丁只会在主 Block 的输入张量为 CUDA FP32 时启用。BF16 和已经使用 FP16 的路径保持源码原有行为。
 
+## 随附完整源码
+
+项目内提供两份完整的 V100 加速版 `model.py`，便于开发者检查代码、按需修改，或移植到自己的 ComfyUI 构建：
+
+- [`sources/origin_v100/model.py`](sources/origin_v100/model.py)：官方/origin MiniMax H3 结构，加上经过实测的 V100 Plan 2 混合精度加速；不包含 TE-Speed `block_loop` 钩子。
+- [`sources/te_v100/model.py`](sources/te_v100/model.py)：包含 TE-Speed `block_loop` 钩子，并使用相同的 V100 Plan 2 加速方案。
+
+两份源码均基于 ComfyUI 提交 [`57500fc`](https://github.com/Comfy-Org/ComfyUI/commit/57500fc) 中首次加入的 MiniMax H3 实现；对应干净 origin `model.py` 的 SHA-256 为 `882c280b05aa60cd17f231e5e2389b921b52880fb3b4e23574c0aba5f2bd5024`。
+
+如果 ComfyUI 构建与该源码版本匹配，可以先备份，再将所选文件作为 `comfy/ldm/minimax/model.py` 使用。对于更新、较旧或已自行修改的构建，应把这两份文件作为参考源码，将 Attention 精度改动以及可选的 TE Block Loop 钩子移植到本地实现，不建议直接覆盖。替换前请关闭 ComfyUI，并在正式使用前验证 Python 语法和模型输出。随附源码主要用于手动开发；对于受支持的版本，带安全检查的 BAT/Python 安装器仍是更稳妥的选择。
+
 ## Windows 一键使用
 
 1. 关闭 ComfyUI。
 2. 根据当前 `model.py` 选择对应 BAT：
-   - 已经安装 TE-Speed 钩子：`patch_te_v100.bat`
+   - 需要 TE-Speed 版本（当前文件可以是干净 origin 或已安装 TE 钩子）：`patch_te_v100.bat`
    - 官方/原版 H3 文件：`patch_h3_origin_v100.bat`
-3. 将 `ComfyUI\comfy\ldm\minimax\model.py` 拖到所选 BAT 文件上。
+3. 直接双击所选 BAT。本定制版默认目标为 `C:\Users\Administrator\ComfyUI-Installs\ComfyUI\ComfyUI\comfy\ldm\minimax\model.py`；也仍可将其他 `model.py` 拖到 BAT 上。
 4. 确认控制台显示 `Patched SHA-256`，然后重新启动 ComfyUI。
 
-如果要恢复补丁前的文件，请先关闭 ComfyUI，再将当前 `model.py` 拖到对应的恢复 BAT 上。恢复脚本会在写入前检查当前版本、V100 补丁标记以及匹配的干净备份。
+如果要恢复补丁前的文件，请先关闭 ComfyUI，再运行对应的恢复 BAT。若 TE 安装从 origin 文件开始，`restore_te_v100.bat` 会精确恢复该 origin 文件；若从已有 TE 文件开始，则精确恢复原 TE 文件。
 
 BAT 启动器会按以下顺序寻找 Python：`COMFYUI_PYTHON`、附近便携版的 `python_embeded\python.exe`、Windows `py -3` 启动器，以及 `PATH` 中的 `python`。
 
@@ -68,12 +79,12 @@ restore_h3_origin_v100.bat "D:\ComfyUI\comfy\ldm\minimax\model.py"
 
 首次写入前，安装脚本会在目标文件旁创建精确备份：
 
-- TE 版：`model.py.v100_te.bak`
+- TE 版：`model.py.v100_te.bak`（保存点击 TE 安装前的精确文件，可为 origin 或 TE）
 - 官方/原版：`model.py.v100_origin.bak`
 
 安全机制包括：
 
-- 写入前精确识别 TE/官方原版结构。
+- 写入前精确识别 TE/官方原版结构，并只在两个 TE 转换锚点均匹配时执行 origin→TE 转换。
 - 要求匹配受支持的 `Attention.forward` 锚点。
 - 拒绝处理不完整的 TE 钩子、不完整的 V100 补丁以及选错版本的补丁脚本。
 - 拒绝覆盖内容不同或已经过期的备份。
