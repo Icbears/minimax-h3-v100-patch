@@ -1,23 +1,24 @@
 {
   "package": "minimax-h3-v100-mixed-precision-patchers",
-  "profile": "MiniMax H3 V100 mixed-precision patch: QKV and attention FP16; Q/K RMSNorm, RoPE, output projection, MLP and residual FP32",
-  "generated_date": "2026-08-07",
+  "profile": "Audio-safe MiniMax H3 V100 patch: FP16 resident QKV and text/video attention; FP32 audio attention, Q/K norm, RoPE, output projection, MLP and residual",
+  "compatibility": "Adapted for the updated MiniMax audio carry/sampler path in ComfyUI 0.31.1",
+  "generated_date": "2026-08-09",
   "files": {
     ".gitignore": {
       "bytes": 49,
       "sha256": "32a99b5d87c2e051b31a9deca3e7be4f8d42483b03a4146b402ef24bf2cab8d5"
     },
     "_patch_core.py": {
-      "bytes": 23486,
-      "sha256": "1d43ae7bb407c3c6fc50a3e3de2298b3043be89bcd7d477df6e272a7c6001e39"
+      "bytes": 30308,
+      "sha256": "4ba0816adae08313e148487b48624c8c3a5f10b95e51d8777c395f89b6aa1954"
     },
     "LICENSE": {
       "bytes": 35149,
       "sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986"
     },
     "NOTICE.md": {
-      "bytes": 2484,
-      "sha256": "ea67bf7445e830591546f51ee5518e1d9f18ff677c3d1b0171da725881b0a52f"
+      "bytes": 3570,
+      "sha256": "38538dfef1da0d7f3494a27a87686b6c30855bfdc131460857ad9c3f504cb27e"
     },
     "patch_h3_origin_v100.bat": {
       "bytes": 1323,
@@ -36,12 +37,12 @@
       "sha256": "1cf4a0d4b4bad5c402bffd21b224c7d44b02aa1d3dc08c57ed9bb3c93797a784"
     },
     "README.md": {
-      "bytes": 7402,
-      "sha256": "511f93d594afdbfeed9f825af7fa098907e59edea5bfdc12b30cb6bc540cf0bc"
+      "bytes": 9592,
+      "sha256": "1d53a99a942d21eeda871891dd698c9e8a1e0d86e48bb9e50aebb38fd83a9a78"
     },
     "README_zh-CN.md": {
-      "bytes": 7428,
-      "sha256": "43ffb4216f3a3a0307b2e226cee0a37e54aa1f28f14081424232201b8836afa9"
+      "bytes": 9385,
+      "sha256": "23e86f89825bf1bde7d1db8ac7755ee8bb8378d45815ff7100cdc614f073c357"
     },
     "restore_h3_origin_v100.bat": {
       "bytes": 278,
@@ -52,21 +53,27 @@
       "sha256": "97af485d1f62350e7b7bc71b60c028c91766a506d0cdad36ec389c4e1450b8a2"
     },
     "sources/origin_v100/model.py": {
-      "bytes": 34363,
-      "sha256": "ff86e416f7fb25d9cb68ceda6fb3e63f95e919db51c019a5a570171bbcd28b78"
+      "bytes": 36622,
+      "sha256": "0bfd99dfc298cf33a44d70de0f4e1521120d665fa2d15efbd24a0963d350937e"
     },
     "sources/te_v100/model.py": {
-      "bytes": 35612,
-      "sha256": "24c3a26708bd0d67f31013e483bd92cdf8d890ff10168c940e1e3532080e3f1c"
+      "bytes": 37871,
+      "sha256": "0164f795ae24a72f18a35846227148bde16b01dca70d63f3e40bf9fcf70cdf8e"
     }
   },
   "known_inputs": {
-    "origin_sha256": "882c280b05aa60cd17f231e5e2389b921b52880fb3b4e23574c0aba5f2bd5024",
-    "te_sha256": "1f95147e69215d7b015e553ef20be20a766291feded683cd953d403c433b7a93"
+    "origin_sha256": "1c9828ec3d38ac01398e45b1edf8d7db38fcc8148c5eb3ba8fb92b762147d0ce",
+    "te_normalized_sha256": "6f2077ebbcb424b676016ccb2711d6cb9ad3f91ab54e7fdf130f6b9bbe6ee9cf"
   },
   "known_outputs": {
-    "origin_sha256": "ff86e416f7fb25d9cb68ceda6fb3e63f95e919db51c019a5a570171bbcd28b78",
-    "te_sha256": "53167a18ad0872d26a9e3502b9a6bc7c135bb10034c60f68e4ad9e93a93d55c6",
-    "te_from_origin_sha256": "24c3a26708bd0d67f31013e483bd92cdf8d890ff10168c940e1e3532080e3f1c"
+    "origin_sha256": "0bfd99dfc298cf33a44d70de0f4e1521120d665fa2d15efbd24a0963d350937e",
+    "te_sha256": "0164f795ae24a72f18a35846227148bde16b01dca70d63f3e40bf9fcf70cdf8e",
+    "te_from_origin_sha256": "0164f795ae24a72f18a35846227148bde16b01dca70d63f3e40bf9fcf70cdf8e"
+  },
+  "runtime_validation": {
+    "origin_profile": "passed",
+    "te_profile": "passed",
+    "audio": "normal",
+    "resident_fp16_qkv_additional_speedup": "approximately 5%-10%"
   }
 }

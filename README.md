@@ -11,7 +11,20 @@ Two version-gated installers for the tested MiniMax H3 V100 mixed-precision prof
 
 Do **not** run both patchers on the same file. The TE installer can promote a supported clean origin file to the TE layout; the origin installer still accepts only the official origin layout.
 
-## Measured result
+## ComfyUI 0.31.1 audio compatibility update
+
+The previous patch release applied FP16 attention to the entire packed H3 sequence, including audio queries. With the updated MiniMax audio carry/sampler path in ComfyUI 0.31.1, that older precision boundary can produce incorrect audio even when the same unpatched `model.py` produces normal sound.
+
+This update is adapted to the new audio path:
+
+- Text/video attention queries remain accelerated in FP16.
+- Target-audio and reference-audio queries are recomputed with FP32 attention and overwrite only their rows before the output projection.
+- The current audio carry/sampler logic is preserved; `audio_vae.py` and VAE launch flags are not modified.
+- Main-DiT QKV compute and the 50 resident QKV weights use FP16. V100 testing found that resident FP16 QKV weights can provide a further roughly **5%–10%** speed improvement, depending on the workload and offload behavior.
+
+Both the origin profile and the TE-hooked profile passed the reported V100 video/audio tests. If the installer reports a `legacy` patch, run the matching `--revert`, update ComfyUI if necessary, and then apply this version. The legacy precision patch is intentionally not upgraded in place.
+
+## Performance evidence
 
 Test case supplied by the V100 tester: 0.2 MP, 5 s, 24 fps.
 
@@ -22,26 +35,30 @@ Test environment: Windows 10, NVIDIA Tesla V100 32 GB, with the GPU power limit 
 | TE-Speed baseline | 317 s | — | Passed |
 | **MiniMax H3 V100 mixed-precision patch** | **206 s** | **35.0% faster / 1.54x** | **Passed** |
 
-These patchers install the tested **MiniMax H3 V100 mixed-precision patch**. Results are workload-, backend- and build-dependent; 1.54x is the measured example, not a universal guarantee.
+The 317 s / 206 s figures are the earlier V100 benchmark for the core mixed-precision approach. They demonstrate the potential of the retained video-side FP16 path, but they are not presented as an exact end-to-end timing for this audio-compatible update.
+
+In the current audio-compatible build, keeping QKV weights resident in FP16 provided an additional reported improvement of approximately **5%–10%** over the otherwise identical version that recast those weights during inference. No single absolute timing is claimed for that follow-up test.
+
+Results are workload-, backend- and build-dependent; neither 1.54x nor the additional 5%–10% is a universal guarantee.
 
 ## Precision split
 
 The 50 main DiT blocks use:
 
-- FP16: fused QKV projection and the optimized attention kernel.
-- FP32: Q/K RMSNorm, RoPE, attention output projection, MLP, AdaLN, residual accumulation and final output heads.
+- FP16: resident fused-QKV weights, fused QKV projection, and text/video attention queries.
+- FP32: target/reference-audio attention queries, Q/K RMSNorm, RoPE, attention output projection, MLP, AdaLN, residual accumulation and final output heads.
 - Source compute dtype: the two token-refiner blocks.
 
-The patch activates only when the incoming main-block tensor is CUDA FP32. BF16 and already-FP16 paths retain the source behavior.
+The audio FP32 attention receives Q/K/V values produced by the FP16 QKV projection, but performs the audio attention operation itself in FP32. The patch activates only when the incoming main-block tensor is CUDA FP32. BF16 and already-FP16 paths retain the source behavior.
 
 ## Bundled source files
 
 Complete V100-accelerated `model.py` sources are included for developers who want to inspect, adapt or integrate the changes into their own ComfyUI builds:
 
-- [`sources/origin_v100/model.py`](sources/origin_v100/model.py): official/origin MiniMax H3 structure plus the tested V100 Plan 2 mixed-precision acceleration; no TE-Speed `block_loop` hook.
-- [`sources/te_v100/model.py`](sources/te_v100/model.py): TE-Speed `block_loop` hooks plus the same tested V100 Plan 2 acceleration.
+- [`sources/origin_v100/model.py`](sources/origin_v100/model.py): current official/origin MiniMax H3 structure plus the tested audio-safe V100 profile; no TE-Speed `block_loop` hook.
+- [`sources/te_v100/model.py`](sources/te_v100/model.py): TE-Speed `block_loop` hooks plus the same audio-safe V100 profile.
 
-Both sources are derived from the ComfyUI MiniMax H3 implementation introduced by commit [`57500fc`](https://github.com/Comfy-Org/ComfyUI/commit/57500fc), whose clean origin `model.py` has SHA-256 `882c280b05aa60cd17f231e5e2389b921b52880fb3b4e23574c0aba5f2bd5024`.
+Both sources are derived from the updated ComfyUI MiniMax H3 implementation containing the audio carry fix from commit [`93cb5edb`](https://github.com/Comfy-Org/ComfyUI/commit/93cb5edb). The supported clean origin `model.py` has SHA-256 `1c9828ec3d38ac01398e45b1edf8d7db38fcc8148c5eb3ba8fb92b762147d0ce`.
 
 For a matching ComfyUI build, either file can be used as a drop-in `comfy/ldm/minimax/model.py` after making a backup. For newer, older or locally modified builds, use these files as reference sources and port the Attention precision changes and, when desired, the TE block-loop hooks into the local implementation instead of blindly overwriting it. Stop ComfyUI before replacing the file and validate the resulting Python syntax and model output before production use. These source copies are provided for manual development; the guarded BAT/Python installers remain the safer option for the supported build.
 
@@ -86,6 +103,8 @@ Safety behavior:
 
 - Exact TE/origin layout detection before patching; origin-to-TE promotion runs only when both verified TE conversion anchors match.
 - Exact supported `Attention.forward` anchor required.
+- Requires the updated MiniMax audio carry/sampler anchor; older source layouts are refused and must be updated first.
+- Detects the previous audio-incompatible V100 patch as `legacy`; it can be safely reverted but is not silently upgraded in place.
 - Refuses partial TE hooks, partial V100 patches and wrong-target patchers.
 - Refuses to overwrite a differing/stale backup.
 - Writes through a temporary file followed by an atomic replacement.

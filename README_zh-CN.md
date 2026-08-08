@@ -11,7 +11,20 @@
 
 不要对同一个文件同时运行两个补丁。TE 安装脚本可以自动把受支持的干净 origin 文件转换为 TE 版本；origin 安装脚本仍只接受官方原版结构。
 
-## 实测结果
+## ComfyUI 0.31.1 音频兼容更新
+
+旧版补丁会把 H3 联合序列中的全部 Attention 都放到 FP16，其中也包括音频查询。在 ComfyUI 0.31.1 更新 MiniMax audio carry/sampler 路径后，旧精度边界可能导致声音异常，即使同一份未打补丁的新版 `model.py` 声音完全正常。
+
+本次更新已经针对新版音频路径完成适配：
+
+- 文本和视频查询的 Attention 继续使用 FP16 加速。
+- 目标音频和参考音频查询单独使用 FP32 Attention 重新计算，并只覆盖对应的输出行。
+- 完整保留新版 audio carry/sampler 逻辑；不修改 `audio_vae.py`，也不修改 VAE 启动参数。
+- 主 DiT 的 QKV 计算和 50 层 QKV 常驻权重使用 FP16。V100 实测表明，QKV 权重常驻 FP16 还可以根据工作负载和卸载方式额外提速约 **5%–10%**。
+
+origin 版和带 TE 钩子的版本均已通过本轮 V100 视频及音频测试。如果安装脚本显示 `legacy`，请先使用对应的 `--revert` 恢复，必要时更新 ComfyUI，然后重新安装本版本。为保证备份安全，旧补丁不会被直接原地升级。
+
+## 性能依据
 
 V100 测试用例：0.2 百万像素、5 秒、24 帧率。
 
@@ -22,26 +35,30 @@ V100 测试用例：0.2 百万像素、5 秒、24 帧率。
 | TE-Speed 基线 | 317 秒 | — | 成功 |
 | **MiniMax H3 V100 mixed-precision patch** | **206 秒** | **加速 35.0% / 1.54 倍** | **成功** |
 
-本项目安装的是经过实测的 **MiniMax H3 V100 mixed-precision patch**。实际速度取决于工作负载、后端和软件版本；1.54 倍是上述环境中的实测结果，不代表所有环境都能获得相同提升。
+317 秒和 206 秒来自早期 V100 混合精度核心方案的实测，可用于说明保留下来的视频侧 FP16 路径具有明显加速潜力，但不应视为本次音频兼容更新的精确端到端耗时。
+
+在当前音频兼容版本中，相比每次推理时重新转换 QKV 权重的相同方案，QKV 权重常驻 FP16 额外获得了约 **5%–10%** 的实测提升。本轮没有提供统一的绝对耗时，因此不对所有工作流承诺固定速度。
+
+实际速度取决于工作负载、注意力后端和软件版本；1.54 倍以及额外 5%–10% 都不代表所有环境都能获得相同提升。
 
 ## 精度分配
 
 50 个主要 DiT Block 使用以下精度策略：
 
-- FP16：融合 QKV 投影和优化后的注意力算子。
-- FP32：Q/K RMSNorm、RoPE、注意力输出投影、MLP、AdaLN、残差累加和最终输出头。
+- FP16：常驻的融合 QKV 权重、融合 QKV 投影，以及文本/视频查询的 Attention。
+- FP32：目标/参考音频查询的 Attention、Q/K RMSNorm、RoPE、注意力输出投影、MLP、AdaLN、残差累加和最终输出头。
 - 保持源码计算精度：两个 Token Refiner Block。
 
-补丁只会在主 Block 的输入张量为 CUDA FP32 时启用。BF16 和已经使用 FP16 的路径保持源码原有行为。
+音频 FP32 Attention 使用的 Q/K/V 数值来自 FP16 QKV 投影，但音频 Attention 运算本身使用 FP32。补丁只会在主 Block 的输入张量为 CUDA FP32 时启用。BF16 和已经使用 FP16 的路径保持源码原有行为。
 
 ## 随附完整源码
 
 项目内提供两份完整的 V100 加速版 `model.py`，便于开发者检查代码、按需修改，或移植到自己的 ComfyUI 构建：
 
-- [`sources/origin_v100/model.py`](sources/origin_v100/model.py)：官方/origin MiniMax H3 结构，加上经过实测的 V100 Plan 2 混合精度加速；不包含 TE-Speed `block_loop` 钩子。
-- [`sources/te_v100/model.py`](sources/te_v100/model.py)：包含 TE-Speed `block_loop` 钩子，并使用相同的 V100 Plan 2 加速方案。
+- [`sources/origin_v100/model.py`](sources/origin_v100/model.py)：当前官方/origin MiniMax H3 结构，加上经过实测的音频安全 V100 方案；不包含 TE-Speed `block_loop` 钩子。
+- [`sources/te_v100/model.py`](sources/te_v100/model.py)：包含 TE-Speed `block_loop` 钩子，并使用相同的音频安全 V100 方案。
 
-两份源码均基于 ComfyUI 提交 [`57500fc`](https://github.com/Comfy-Org/ComfyUI/commit/57500fc) 中首次加入的 MiniMax H3 实现；对应干净 origin `model.py` 的 SHA-256 为 `882c280b05aa60cd17f231e5e2389b921b52880fb3b4e23574c0aba5f2bd5024`。
+两份源码均基于包含 [`93cb5edb`](https://github.com/Comfy-Org/ComfyUI/commit/93cb5edb) audio carry 修复的新版 ComfyUI MiniMax H3 实现。受支持的干净 origin `model.py` SHA-256 为 `1c9828ec3d38ac01398e45b1edf8d7db38fcc8148c5eb3ba8fb92b762147d0ce`。
 
 如果 ComfyUI 构建与该源码版本匹配，可以先备份，再将所选文件作为 `comfy/ldm/minimax/model.py` 使用。对于更新、较旧或已自行修改的构建，应把这两份文件作为参考源码，将 Attention 精度改动以及可选的 TE Block Loop 钩子移植到本地实现，不建议直接覆盖。替换前请关闭 ComfyUI，并在正式使用前验证 Python 语法和模型输出。随附源码主要用于手动开发；对于受支持的版本，带安全检查的 BAT/Python 安装器仍是更稳妥的选择。
 
@@ -86,6 +103,8 @@ restore_h3_origin_v100.bat "D:\ComfyUI\comfy\ldm\minimax\model.py"
 
 - 写入前精确识别 TE/官方原版结构，并只在两个 TE 转换锚点均匹配时执行 origin→TE 转换。
 - 要求匹配受支持的 `Attention.forward` 锚点。
+- 要求存在新版 MiniMax audio carry/sampler 锚点；旧源码会被拒绝，必须先更新 ComfyUI。
+- 旧的音频不兼容 V100 补丁会被识别为 `legacy`；可以安全恢复，但不会被静默原地升级。
 - 拒绝处理不完整的 TE 钩子、不完整的 V100 补丁以及选错版本的补丁脚本。
 - 拒绝覆盖内容不同或已经过期的备份。
 - 先写入临时文件，再进行原子替换。

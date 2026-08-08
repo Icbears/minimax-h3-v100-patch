@@ -5,7 +5,7 @@ SPDX-License-Identifier: GPL-3.0-only
 
 This installer modifies ComfyUI's ``comfy/ldm/minimax/model.py``. The
 replacement Attention method is based on the upstream ComfyUI implementation
-and was modified on 2026-08-05 to add the tested V100 FP16 compute islands.
+and was updated on 2026-08-08 for the current audio carry/sampler behavior.
 """
 
 from __future__ import print_function
@@ -26,10 +26,10 @@ TARGET = Path("comfy/ldm/minimax/model.py")
 
 KNOWN_NORMALIZED_SHA256 = {
     "origin": {
-        "882c280b05aa60cd17f231e5e2389b921b52880fb3b4e23574c0aba5f2bd5024",
+        "1c9828ec3d38ac01398e45b1edf8d7db38fcc8148c5eb3ba8fb92b762147d0ce",
     },
     "te": {
-        "57414496df9c4bef974acbb486d9a6cf77f1ad087bcd10364a8994b67b5be949",
+        "6f2077ebbcb424b676016ccb2711d6cb9ad3f91ab54e7fdf130f6b9bbe6ee9cf",
     },
 }
 
@@ -49,7 +49,14 @@ STOCK_LOOP_ANCHOR = (
 )
 PATCH_METHOD_MARKER = 'getattr(self, "fp16_qkv", False)'
 PATCH_FLAG_MARKER = "            block.attn.fp16_qkv = True"
+PATCH_WEIGHT_MARKER = "            block.attn.fp16_qkv_weight = True"
+PATCH_AUDIO_MARKER = 'transformer_options["minimax_h3_fp32_audio_ranges"]'
+PATCH_IMPORT_MARKER = "optimized_attention, attention_pytorch"
+AUDIO_CARRY_ANCHOR = "        audio_src = x[1]"
 FINAL_LAYER_MARKER = "        self.final_layer = FinalLayer("
+
+ORIGINAL_ATTENTION_IMPORT = "from comfy.ldm.modules.attention import optimized_attention"
+PATCHED_ATTENTION_IMPORT = "from comfy.ldm.modules.attention import optimized_attention, attention_pytorch"
 
 TE_FORWARD_ANCHOR = '''    def forward(self, x, timestep, context, transformer_options={}, minimax_payload=None, **kwargs):
 '''
@@ -116,6 +123,55 @@ TE_BLOCK_LOOP = '''        # blocks
 '''
 
 
+PATCHED_ORIGIN_BLOCK_LOOP = '''        # blocks
+        # Keep target/reference audio query rows on the FP32 attention path.
+        transformer_options["minimax_h3_fp32_audio_ranges"] = tuple(
+            (a, b) for a, b, kind in layout.segments if kind in ("audio", "ref_audio")
+        )
+        patches_replace = transformer_options.get("patches_replace", {})
+        blocks_replace = patches_replace.get("dit", {})
+        prefetch_queue = comfy.model_prefetch.make_prefetch_queue(list(self.blocks), device, transformer_options)
+        for i, block in enumerate(self.blocks):
+            comfy.model_prefetch.prefetch_queue_pop(prefetch_queue, device, block)
+            if ("double_block", i) in blocks_replace:
+                def block_wrap(args):
+                    return {"img": block(args["img"], args["t_emb"], args["mod_segments"], args["rope_freqs"],
+                                         transformer_options=args["transformer_options"])}
+                h = blocks_replace[("double_block", i)](
+                    {"img": h, "t_emb": t_emb, "mod_segments": mod_segments, "rope_freqs": rope_freqs,
+                     "transformer_options": transformer_options},
+                    {"original_block": block_wrap})["img"]
+            else:
+                h = block(h, t_emb, mod_segments, rope_freqs, transformer_options=transformer_options)
+        if prefetch_queue is not None:
+            comfy.model_prefetch.prefetch_queue_pop(prefetch_queue, device, None)
+        transformer_options.pop("minimax_h3_fp32_audio_ranges", None)
+'''
+
+
+PATCHED_TE_BLOCK_LOOP = '''        # blocks
+        # Keep target/reference audio query rows on the FP32 attention path.
+        transformer_options["minimax_h3_fp32_audio_ranges"] = tuple(
+            (a, b) for a, b, kind in layout.segments if kind in ("audio", "ref_audio")
+        )
+        # blocks (TE-Speed-MiniMaxH3-OSS hook)
+        patches_replace = transformer_options.get("patches_replace", {})
+        blocks_replace = patches_replace.get("dit", {})
+        cache_ranges = [(a, b) for a, b, kind in layout.segments if kind in ("audio", "video")]
+        if ("block_loop", 0) in blocks_replace:
+            def block_loop_wrap(args):
+                return {"img": self._run_blocks(args["img"], args["t_emb"], args["mod_segments"], args["rope_freqs"],
+                                                args["transformer_options"], args.get("start", 0), args.get("end"))}
+            h = blocks_replace[("block_loop", 0)](
+                {"img": h, "t_emb": t_emb, "mod_segments": mod_segments, "rope_freqs": rope_freqs,
+                 "transformer_options": transformer_options, "cache_ranges": cache_ranges, "block_count": len(self.blocks)},
+                {"original_block": block_loop_wrap})["img"]
+        else:
+            h = self._run_blocks(h, t_emb, mod_segments, rope_freqs, transformer_options)
+        transformer_options.pop("minimax_h3_fp32_audio_ranges", None)
+'''
+
+
 ORIGINAL_ATTENTION_METHOD = '''    def forward(self, x, rope_freqs=None, transformer_options={}):
         s = x.shape[0]
         q, k, v = self.qkv_proj(x).split(self.heads * self.head_dim, dim=-1)
@@ -149,18 +205,38 @@ ORIGINAL_ATTENTION_METHOD = '''    def forward(self, x, rope_freqs=None, transfo
 PATCHED_ATTENTION_METHOD = '''    def forward(self, x, rope_freqs=None, transformer_options={}):
         s = x.shape[0]
         residual_dtype = x.dtype
-        use_fp16 = (
+        audio_ranges = transformer_options.get("minimax_h3_fp32_audio_ranges", ())
+        use_fp16_qkv = (
             getattr(self, "fp16_qkv", False)
             and x.device.type == "cuda"
             and x.dtype == torch.float32
         )
+        use_fp32_audio_attention = (
+            bool(audio_ranges)
+            and x.device.type == "cuda"
+            and x.dtype == torch.float32
+            and not comfy.model_management.in_training
+        )
 
-        # MiniMax H3 V100 acceleration (tested Plan 2): QKV projection and
-        # attention use FP16 Tensor Cores. Q/K return to FP32 immediately for
-        # RMSNorm and RoPE. Output projection, MLP, AdaLN and residual stay FP32.
-        proj_x = x.half() if use_fp16 else x
+        # The QKV GEMM already runs in FP16. Convert its resident parameter once
+        # so later denoising steps do not repeatedly materialize an FP16 weight.
+        if use_fp16_qkv and getattr(self, "fp16_qkv_weight", False):
+            weight = self.qkv_proj.weight
+            if weight.dtype == torch.float32:
+                with torch.no_grad():
+                    weight.data = weight.data.to(dtype=torch.float16)
+            elif weight.dtype != torch.float16:
+                raise RuntimeError(
+                    "02_qkv_weight_fp16 expects FP32 or FP16 QKV weights; "
+                    "do not combine this variant with BF16/FP8 model-weight modes."
+                )
+
+        # QKV uses V100 Tensor Cores. Q/K immediately return to FP32 before the
+        # stability-sensitive RMSNorm and RoPE stages; V stays FP16 until the
+        # audio-only FP32 attention path promotes it.
+        proj_x = x.half() if use_fp16_qkv else x
         q, k, v = self.qkv_proj(proj_x).split(self.heads * self.head_dim, dim=-1)
-        if use_fp16:
+        if use_fp16_qkv:
             q = q.float()
             k = k.float()
         v = v.view(s, self.heads, self.head_dim)
@@ -186,11 +262,22 @@ PATCHED_ATTENTION_METHOD = '''    def forward(self, x, rope_freqs=None, transfor
         k = k.transpose(0, 1).unsqueeze(0)
         v = v.transpose(0, 1).unsqueeze(0)
 
-        if use_fp16:
+        if use_fp32_audio_attention:
+            # Text/video queries retain FP16 attention. Target/reference audio
+            # query rows are recomputed with FP32 attention math and overwrite
+            # the corresponding rows before the FP32 output projection.
             out = optimized_attention(
-                q.half(), k.half(), v.half(), self.heads, mask=None,
-                skip_reshape=True, transformer_options=transformer_options,
-            ).to(residual_dtype)
+                q.to(torch.float16), k.to(torch.float16), v.to(torch.float16),
+                self.heads, mask=None, skip_reshape=True,
+                transformer_options=transformer_options,
+            ).to(dtype=x.dtype)
+            audio_v = v.to(dtype=residual_dtype)
+            for start, stop in audio_ranges:
+                if 0 <= start < stop <= s:
+                    out[:, start:stop] = attention_pytorch(
+                        q[:, :, start:stop], k, audio_v,
+                        self.heads, mask=None, skip_reshape=True,
+                    )
         else:
             out = optimized_attention(
                 q, k, v, self.heads, mask=None, skip_reshape=True,
@@ -200,10 +287,11 @@ PATCHED_ATTENTION_METHOD = '''    def forward(self, x, rope_freqs=None, transfor
 '''
 
 
-ENABLE_BLOCKS = '''        # MiniMax H3 V100 Plan 2: enable FP16 only on the 50 main DiT attentions.
-        # The two token-refiner blocks intentionally retain the source compute dtype.
+ENABLE_BLOCKS = '''        # MiniMax H3 V100 audio-safe profile: enable FP16 QKV only on
+        # the 50 main DiT blocks. Token-refiner blocks keep the source dtype.
         for block in self.blocks:
             block.attn.fp16_qkv = True
+            block.attn.fp16_qkv_weight = True
 '''
 
 
@@ -246,16 +334,24 @@ def detect_variant(text):
 
 
 def patch_state(text):
-    has_method = PATCH_METHOD_MARKER in text
-    has_flag = PATCH_FLAG_MARKER in text
-    if has_method and has_flag:
+    markers = (
+        PATCH_METHOD_MARKER,
+        PATCH_FLAG_MARKER,
+        PATCH_WEIGHT_MARKER,
+        PATCH_AUDIO_MARKER,
+        PATCH_IMPORT_MARKER,
+    )
+    present = tuple(marker in text for marker in markers)
+    if all(present):
         return "patched"
-    if has_method or has_flag:
+    if present[0] and present[1]:
+        return "legacy"
+    if any(present):
         return "partial"
     return "unpatched"
 
 
-def validate_target(text, expected_variant, allow_patched=True):
+def validate_target(text, expected_variant, allow_patched=True, require_audio_compat=True):
     variant = detect_variant(text)
     state = patch_state(text)
     if variant == "partial_te":
@@ -268,15 +364,25 @@ def validate_target(text, expected_variant, allow_patched=True):
                 .format(variant, expected_variant, other)
             )
         raise SystemExit("error: unsupported MiniMax H3 model.py layout; no file was changed")
+    if require_audio_compat and AUDIO_CARRY_ANCHOR not in text:
+        raise SystemExit(
+            "error: this MiniMax H3 source predates the supported audio carry/sampler update; "
+            "update ComfyUI first. No file was changed"
+        )
     if state == "partial":
         raise SystemExit("error: partial V100 patch detected; restore a clean backup first")
-    if state == "patched" and not allow_patched:
+    if state in ("patched", "legacy") and not allow_patched:
         raise SystemExit("error: backup unexpectedly already contains the V100 patch")
     return state
 
 
 def apply_patch(text, expected_variant):
     validate_target(text, expected_variant, allow_patched=False)
+    if text.count(ORIGINAL_ATTENTION_IMPORT) != 1:
+        raise SystemExit(
+            "error: the upstream attention import does not match the supported version; "
+            "no file was changed"
+        )
     if text.count(ORIGINAL_ATTENTION_METHOD) != 1:
         raise SystemExit(
             "error: the upstream Attention.forward body does not match the supported version; "
@@ -285,8 +391,18 @@ def apply_patch(text, expected_variant):
     if text.count(FINAL_LAYER_MARKER) != 1:
         raise SystemExit("error: expected exactly one FinalLayer construction anchor")
 
-    patched = text.replace(ORIGINAL_ATTENTION_METHOD, PATCHED_ATTENTION_METHOD, 1)
+    source_loop = ORIGIN_BLOCK_LOOP if expected_variant == "origin" else TE_BLOCK_LOOP
+    patched_loop = PATCHED_ORIGIN_BLOCK_LOOP if expected_variant == "origin" else PATCHED_TE_BLOCK_LOOP
+    if text.count(source_loop) != 1:
+        raise SystemExit(
+            "error: the {0} block loop does not match the supported audio-safe patch; "
+            "no file was changed".format(expected_variant)
+        )
+
+    patched = text.replace(ORIGINAL_ATTENTION_IMPORT, PATCHED_ATTENTION_IMPORT, 1)
+    patched = patched.replace(ORIGINAL_ATTENTION_METHOD, PATCHED_ATTENTION_METHOD, 1)
     patched = patched.replace(FINAL_LAYER_MARKER, ENABLE_BLOCKS + FINAL_LAYER_MARKER, 1)
+    patched = patched.replace(source_loop, patched_loop, 1)
     ast.parse(patched)
     if validate_target(patched, expected_variant) != "patched":
         raise SystemExit("error: internal patch validation failed")
@@ -434,7 +550,7 @@ def atomic_replace(path, data):
 
 def print_status(target, variant, state, raw, text):
     known = normalized_sha256(text) in KNOWN_NORMALIZED_SHA256[variant]
-    if state == "patched":
+    if state in ("patched", "legacy"):
         known_label = "n/a (active file is already patched)"
     else:
         known_label = "yes" if known else "no (structural anchors still checked)"
@@ -448,7 +564,7 @@ def print_status(target, variant, state, raw, text):
 def run(expected_variant, argv=None, allow_origin_to_te=False):
     title = "TE-hooked H3" if expected_variant == "te" else "official H3 origin"
     parser = argparse.ArgumentParser(
-        description="Patch {0} for the tested MiniMax H3 V100 Plan 2 precision split".format(title)
+        description="Patch {0} for the audio-safe MiniMax H3 V100 mixed-precision profile".format(title)
     )
     parser.add_argument(
         "path", nargs="?", help="ComfyUI root or model.py; enables drag-and-drop onto the BAT launcher"
@@ -489,7 +605,7 @@ def run(expected_variant, argv=None, allow_origin_to_te=False):
             raise SystemExit(
                 "error: the active origin file is not a TE patch; use restore_h3_origin_v100"
             )
-        if state != "patched":
+        if state not in ("patched", "legacy"):
             raise SystemExit("error: refusing to revert because the active file is not V100-patched")
         if not backup.is_file():
             raise SystemExit("error: no backup at {0}".format(backup))
@@ -497,16 +613,33 @@ def run(expected_variant, argv=None, allow_origin_to_te=False):
         backup_variant = detect_variant(backup_text)
         if backup_variant not in ("origin", "te"):
             raise SystemExit("error: backup is not a supported origin or TE model.py")
-        validate_target(backup_text, backup_variant, allow_patched=False)
+        validate_target(
+            backup_text,
+            backup_variant,
+            allow_patched=False,
+            require_audio_compat=(state != "legacy"),
+        )
         ast.parse(backup_text)
         atomic_replace(target, backup_raw)
         restored_raw, restored_text, _, _ = read_model(target)
-        validate_target(restored_text, backup_variant, allow_patched=False)
+        validate_target(
+            restored_text,
+            backup_variant,
+            allow_patched=False,
+            require_audio_compat=(state != "legacy"),
+        )
         print("Restored SHA-256:   {0}".format(sha256_bytes(restored_raw)))
         print("Restored variant:   {0}".format(backup_variant))
         print("Restored from:      {0}".format(backup))
         print("Restart ComfyUI before the next inference run.")
         return 0
+
+    if state == "legacy":
+        raise SystemExit(
+            "error: legacy V100 patch detected. It applies FP16 attention to audio and is not "
+            "upgraded in place. Run this patcher with --revert, update ComfyUI if needed, then "
+            "run the patcher again"
+        )
 
     if state == "patched":
         if promoting_origin:
@@ -551,7 +684,7 @@ def run(expected_variant, argv=None, allow_origin_to_te=False):
         raise SystemExit("error: post-write byte verification failed; restore the backup")
 
     print("Patched SHA-256:    {0}".format(sha256_bytes(verify_raw)))
-    print("Patch profile:      Plan 2 (QKV + attention FP16; Q/K norm/RoPE + residual FP32)")
+    print("Patch profile:      audio-safe V100 (FP16 QKV + text/video attention; FP32 audio attention)")
     print("Restart ComfyUI before benchmarking.")
     return 0
 
