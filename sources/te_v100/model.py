@@ -9,8 +9,9 @@ The packed sequence is:
 Timestep domain: the model receives the *video* sigma from the sampler and
 derives per-token timesteps t = 1 - sigma internally; the audio stream runs on
 its own shifted schedule (sigma_shift video 12.0 / audio 3.0), mapped from the
-video sigma in closed form. The audio velocity is returned scaled by the
-schedule map's derivative d(sigma_a)/d(sigma_v).
+video sigma in closed form. The sampler carries the audio latent scaled onto the
+video schedule (ModelSamplingAV); forward() undoes that scale and converts the
+velocity back, so _forward only ever sees the stream's own latent.
 """
 
 import math
@@ -24,7 +25,7 @@ import comfy.model_prefetch
 import comfy.ops
 import comfy.patcher_extension
 import comfy.quant_ops
-from comfy.ldm.modules.attention import optimized_attention
+from comfy.ldm.modules.attention import optimized_attention, attention_pytorch
 
 FRAME_PER_TOKEN = (1, 4, 4, 4, 4)
 FRAME_RESCALE = 5.0 / 3.0
@@ -36,17 +37,6 @@ def time_shift_sigma(sigma, from_shift, to_shift):
     # invert sigma = s*b/(1+(s-1)*b) to the base grid, re-apply the other shift
     base = sigma / (from_shift + sigma * (1.0 - from_shift))
     return to_shift * base / (1.0 + (to_shift - 1.0) * base)
-
-
-def time_shift_slope(sigma, from_shift, to_shift):
-    """d(sigma_to)/d(sigma_from) at the same base-grid point.
-
-    Scaling a stream's returned velocity by this slope makes the flat ODE that
-    any sampler integrates on the from-schedule equal to that stream's true ODE
-    on its own schedule.
-    """
-    base = sigma / (from_shift + sigma * (1.0 - from_shift))
-    return (to_shift * (1.0 + (from_shift - 1.0) * base) ** 2) / (from_shift * (1.0 + (to_shift - 1.0) * base) ** 2)
 
 
 def patchify_video(latent, patch_size=(1, 2, 2)):
@@ -156,18 +146,38 @@ class Attention(nn.Module):
     def forward(self, x, rope_freqs=None, transformer_options={}):
         s = x.shape[0]
         residual_dtype = x.dtype
-        use_fp16 = (
+        audio_ranges = transformer_options.get("minimax_h3_fp32_audio_ranges", ())
+        use_fp16_qkv = (
             getattr(self, "fp16_qkv", False)
             and x.device.type == "cuda"
             and x.dtype == torch.float32
         )
+        use_fp32_audio_attention = (
+            bool(audio_ranges)
+            and x.device.type == "cuda"
+            and x.dtype == torch.float32
+            and not comfy.model_management.in_training
+        )
 
-        # MiniMax H3 V100 acceleration (tested Plan 2): QKV projection and
-        # attention use FP16 Tensor Cores. Q/K return to FP32 immediately for
-        # RMSNorm and RoPE. Output projection, MLP, AdaLN and residual stay FP32.
-        proj_x = x.half() if use_fp16 else x
+        # The QKV GEMM already runs in FP16. Convert its resident parameter once
+        # so later denoising steps do not repeatedly materialize an FP16 weight.
+        if use_fp16_qkv and getattr(self, "fp16_qkv_weight", False):
+            weight = self.qkv_proj.weight
+            if weight.dtype == torch.float32:
+                with torch.no_grad():
+                    weight.data = weight.data.to(dtype=torch.float16)
+            elif weight.dtype != torch.float16:
+                raise RuntimeError(
+                    "02_qkv_weight_fp16 expects FP32 or FP16 QKV weights; "
+                    "do not combine this variant with BF16/FP8 model-weight modes."
+                )
+
+        # QKV uses V100 Tensor Cores. Q/K immediately return to FP32 before the
+        # stability-sensitive RMSNorm and RoPE stages; V stays FP16 until the
+        # audio-only FP32 attention path promotes it.
+        proj_x = x.half() if use_fp16_qkv else x
         q, k, v = self.qkv_proj(proj_x).split(self.heads * self.head_dim, dim=-1)
-        if use_fp16:
+        if use_fp16_qkv:
             q = q.float()
             k = k.float()
         v = v.view(s, self.heads, self.head_dim)
@@ -193,11 +203,22 @@ class Attention(nn.Module):
         k = k.transpose(0, 1).unsqueeze(0)
         v = v.transpose(0, 1).unsqueeze(0)
 
-        if use_fp16:
+        if use_fp32_audio_attention:
+            # Text/video queries retain FP16 attention. Target/reference audio
+            # query rows are recomputed with FP32 attention math and overwrite
+            # the corresponding rows before the FP32 output projection.
             out = optimized_attention(
-                q.half(), k.half(), v.half(), self.heads, mask=None,
-                skip_reshape=True, transformer_options=transformer_options,
-            ).to(residual_dtype)
+                q.to(torch.float16), k.to(torch.float16), v.to(torch.float16),
+                self.heads, mask=None, skip_reshape=True,
+                transformer_options=transformer_options,
+            ).to(dtype=x.dtype)
+            audio_v = v.to(dtype=residual_dtype)
+            for start, stop in audio_ranges:
+                if 0 <= start < stop <= s:
+                    out[:, start:stop] = attention_pytorch(
+                        q[:, :, start:stop], k, audio_v,
+                        self.heads, mask=None, skip_reshape=True,
+                    )
         else:
             out = optimized_attention(
                 q, k, v, self.heads, mask=None, skip_reshape=True,
@@ -473,10 +494,11 @@ class MiniMaxH3Model(nn.Module):
             DiTBlock(hidden_size, num_attention_heads, attention_head_dim, ffn_hidden_size,
                      time_embed_dim, norm_eps, qk_norm_eps, **curve, dtype=dtype, device=device, operations=operations)
             for _ in range(num_layers)])
-        # MiniMax H3 V100 Plan 2: enable FP16 only on the 50 main DiT attentions.
-        # The two token-refiner blocks intentionally retain the source compute dtype.
+        # MiniMax H3 V100 audio-safe profile: enable FP16 QKV only on
+        # the 50 main DiT blocks. Token-refiner blocks keep the source dtype.
         for block in self.blocks:
             block.attn.fp16_qkv = True
+            block.attn.fp16_qkv_weight = True
         self.final_layer = FinalLayer(hidden_size, time_embed_dim, video_patch_dim, audio_latents_dim,
                                       final_norm_eps, **curve, dtype=dtype, device=device, operations=operations)
 
@@ -546,11 +568,29 @@ class MiniMaxH3Model(nn.Module):
         return h
 
     def forward(self, x, timestep, context, transformer_options={}, minimax_payload=None, **kwargs):
-        return comfy.patcher_extension.WrapperExecutor.new_class_executor(
+        # the sampler carries the audio as (sigma_v / sigma_a) * x_audio; undo it outside
+        # the wrappers so they and the network see the stream's own latent and velocity
+        scale = float((minimax_payload or {}).get("audio_scale", 1.0))
+        audio_src = x[1]
+        if scale != 1.0:
+            shift_v = float(transformer_options.get("minimax_h3_sigma_shift_video", self.sigma_shift_video))
+            shift_a = float(transformer_options.get("minimax_h3_sigma_shift_audio", self.sigma_shift_audio))
+            sigma_v = (timestep.flatten()[0] / 1000.0).float().clamp(min=1e-6)
+            sigma_a = time_shift_sigma(sigma_v, shift_v, shift_a)
+            carry = (sigma_a / sigma_v).to(audio_src.dtype)
+            x = [x[0], audio_src * carry]
+
+        out = comfy.patcher_extension.WrapperExecutor.new_class_executor(
             self._forward,
             self,
             comfy.patcher_extension.get_all_wrappers(comfy.patcher_extension.WrappersMP.DIFFUSION_MODEL, transformer_options)
         ).execute(x, timestep, context, transformer_options, minimax_payload=minimax_payload, **kwargs)
+
+        if scale != 1.0:
+            # d/d(sigma_v) of the carried variable
+            out[1] = ((1.0 - scale) * (audio_src * carry)
+                      + (1.0 + (scale - 1.0) * sigma_a).to(out[1].dtype) * out[1])
+        return out
 
     def _forward(self, x, timestep, context, transformer_options={}, minimax_payload=None, **kwargs):
         video_x, audio_x = x[0], x[1]
@@ -662,6 +702,10 @@ class MiniMaxH3Model(nn.Module):
         rope_freqs = rope_rotation_table(self.rope_freqs(layout.position_ids, device), dtype)
 
         # blocks
+        # Keep target/reference audio query rows on the FP32 attention path.
+        transformer_options["minimax_h3_fp32_audio_ranges"] = tuple(
+            (a, b) for a, b, kind in layout.segments if kind in ("audio", "ref_audio")
+        )
         # blocks (TE-Speed-MiniMaxH3-OSS hook)
         patches_replace = transformer_options.get("patches_replace", {})
         blocks_replace = patches_replace.get("dit", {})
@@ -676,6 +720,7 @@ class MiniMaxH3Model(nn.Module):
                 {"original_block": block_loop_wrap})["img"]
         else:
             h = self._run_blocks(h, t_emb, mod_segments, rope_freqs, transformer_options)
+        transformer_options.pop("minimax_h3_fp32_audio_ranges", None)
 
         # target streams are single contiguous segments (audio then video, last two)
         video_seg = next((a, b, t_row[seg_t["video"]]) for a, b, k in layout.segments if k == "video")
@@ -686,8 +731,4 @@ class MiniMaxH3Model(nn.Module):
         video_out = video_out[:, :, :orig_t, :orig_h, :orig_w]
         audio_out = unpack_audio(a)
 
-        # The sampler integrates the flat ODE dX/dsigma_v = (X - denoised)/sigma_v.
-        # Scaling the audio velocity by d(sigma_a)/d(sigma_v) makes that ODE equal
-        # to the audio stream's true ODE on its own shifted schedule.
-        slope_a = time_shift_slope(sigma_v, shift_v, shift_a).to(audio_out.dtype)
-        return [-video_out.to(video_x.dtype), (-slope_a) * audio_out.to(audio_x.dtype)]
+        return [-video_out.to(video_x.dtype), -audio_out.to(audio_x.dtype)]
