@@ -1,79 +1,105 @@
 {
-  "package": "minimax-h3-v100-mixed-precision-patchers",
-  "profile": "Audio-safe MiniMax H3 V100 patch: FP16 resident QKV and text/video attention; FP32 audio attention, Q/K norm, RoPE, output projection, MLP and residual",
-  "compatibility": "Adapted for the updated MiniMax audio carry/sampler path in ComfyUI 0.31.1",
-  "generated_date": "2026-08-09",
+  "package": "minimax-h3-v100-patch",
+  "version": "0.1.2",
+  "default_delivery": "ComfyUI Custom Node runtime extension",
+  "profile": "FP32 base; FP16 resident QKV and text/video attention; FP32 audio attention, Q/K norm, RoPE, output projection, MLP, AdaLN and residual",
+  "compatibility": "ComfyUI 0.31.1 MiniMax H3 with the updated audio carry/sampler path",
+  "generated_date": "2026-08-11",
+  "runtime_status": "user-reported V100 runtime success on ComfyUI 0.31.1",
+  "known_clean_origin_sha256": "1c9828ec3d38ac01398e45b1edf8d7db38fcc8148c5eb3ba8fb92b762147d0ce",
   "files": {
     ".gitignore": {
-      "bytes": 49,
-      "sha256": "32a99b5d87c2e051b31a9deca3e7be4f8d42483b03a4146b402ef24bf2cab8d5"
+      "bytes": 55,
+      "sha256": "c5670b4056c266e4118753354ae8e60c9f7021990901fdd0a5486c1ba0023f07"
     },
-    "_patch_core.py": {
-      "bytes": 30308,
-      "sha256": "4ba0816adae08313e148487b48624c8c3a5f10b95e51d8777c395f89b6aa1954"
+    "__init__.py": {
+      "bytes": 555,
+      "sha256": "a355ee8d6f945664389d25176a1ce955b32dbb5c24a0fc6d86b54a4d77ce016d"
     },
     "LICENSE": {
       "bytes": 35149,
       "sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986"
     },
     "NOTICE.md": {
+      "bytes": 3262,
+      "sha256": "d89b37041b8e800569e55060fd8ccc8e311a6558187b1c173dddc8faaeb3673a"
+    },
+    "README.md": {
+      "bytes": 7975,
+      "sha256": "c1f68af96254f4bf9b6782c452e5aaeaf147913b26d29512a95f5a0a365c36e9"
+    },
+    "README_zh-CN.md": {
+      "bytes": 7762,
+      "sha256": "bc0897dfebf84f8ba512b5d7220fd69993fe6c43b23e463da355b8dc38fd670f"
+    },
+    "runtime_patch.py": {
+      "bytes": 16754,
+      "sha256": "29f66b811240459a78594a04ce1bd8843c0a79000c04f232b270fbc39cc06712"
+    },
+    "tests/test_runtime_patch.py": {
+      "bytes": 9898,
+      "sha256": "7fe7ae7b3157a1141817740cf366a2969884d91ea947c7132e3850b41e6937f2"
+    },
+    "legacy_patcher/_patch_core.py": {
+      "bytes": 30308,
+      "sha256": "4ba0816adae08313e148487b48624c8c3a5f10b95e51d8777c395f89b6aa1954"
+    },
+    "legacy_patcher/LICENSE": {
+      "bytes": 35149,
+      "sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986"
+    },
+    "legacy_patcher/MANIFEST.json": {
+      "bytes": 2670,
+      "sha256": "2ab3f70b8ded4c8b50a1c77ab519e7db30d55003bfc4a1d331bd1c88a6e98e1f"
+    },
+    "legacy_patcher/NOTICE.md": {
       "bytes": 3570,
       "sha256": "38538dfef1da0d7f3494a27a87686b6c30855bfdc131460857ad9c3f504cb27e"
     },
-    "patch_h3_origin_v100.bat": {
+    "legacy_patcher/patch_h3_origin_v100.bat": {
       "bytes": 1323,
       "sha256": "d808ba779622b20e2752895ce7e17ab56ca8d134ac0e6fe788f3abbc2111c8c3"
     },
-    "patch_h3_origin_v100.py": {
+    "legacy_patcher/patch_h3_origin_v100.py": {
       "bytes": 226,
       "sha256": "70d676dde67ae85154a9a2f7988d1f0f10c7e8ad4099061444b81ba42b7c4762"
     },
-    "patch_te_v100.bat": {
+    "legacy_patcher/patch_te_v100.bat": {
       "bytes": 1509,
       "sha256": "7fa845c374c5ed832543f70a6bb1501035e56327bbc7a7dc821a30c43ab17382"
     },
-    "patch_te_v100.py": {
+    "legacy_patcher/patch_te_v100.py": {
       "bytes": 247,
       "sha256": "1cf4a0d4b4bad5c402bffd21b224c7d44b02aa1d3dc08c57ed9bb3c93797a784"
     },
-    "README.md": {
-      "bytes": 9592,
-      "sha256": "1d53a99a942d21eeda871891dd698c9e8a1e0d86e48bb9e50aebb38fd83a9a78"
-    },
-    "README_zh-CN.md": {
-      "bytes": 9385,
-      "sha256": "23e86f89825bf1bde7d1db8ac7755ee8bb8378d45815ff7100cdc614f073c357"
-    },
-    "restore_h3_origin_v100.bat": {
+    "legacy_patcher/restore_h3_origin_v100.bat": {
       "bytes": 278,
       "sha256": "3d77a96bc3122f0dddcf2ff53e8fa01d4be12a84df79f09fe17eaba3cb80d0a3"
     },
-    "restore_te_v100.bat": {
+    "legacy_patcher/restore_te_v100.bat": {
       "bytes": 1578,
       "sha256": "97af485d1f62350e7b7bc71b60c028c91766a506d0cdad36ec389c4e1450b8a2"
     },
-    "sources/origin_v100/model.py": {
+    "legacy_patcher/sources/origin_v100/model.py": {
       "bytes": 36622,
       "sha256": "0bfd99dfc298cf33a44d70de0f4e1521120d665fa2d15efbd24a0963d350937e"
     },
-    "sources/te_v100/model.py": {
+    "legacy_patcher/sources/te_v100/model.py": {
       "bytes": 37871,
       "sha256": "0164f795ae24a72f18a35846227148bde16b01dca70d63f3e40bf9fcf70cdf8e"
     }
   },
-  "known_inputs": {
-    "origin_sha256": "1c9828ec3d38ac01398e45b1edf8d7db38fcc8148c5eb3ba8fb92b762147d0ce",
-    "te_normalized_sha256": "6f2077ebbcb424b676016ccb2711d6cb9ad3f91ab54e7fdf130f6b9bbe6ee9cf"
-  },
-  "known_outputs": {
-    "origin_sha256": "0bfd99dfc298cf33a44d70de0f4e1521120d665fa2d15efbd24a0963d350937e",
-    "te_sha256": "0164f795ae24a72f18a35846227148bde16b01dca70d63f3e40bf9fcf70cdf8e",
-    "te_from_origin_sha256": "0164f795ae24a72f18a35846227148bde16b01dca70d63f3e40bf9fcf70cdf8e"
-  },
-  "runtime_validation": {
-    "origin_profile": "passed",
-    "te_profile": "passed",
-    "audio": "normal",
-    "resident_fp16_qkv_additional_speedup": "approximately 5%-10%"
+  "validation": {
+    "python_ast": "passed",
+    "simulated_loader_tests": "passed (6 tests)",
+    "runtime_version_reporting": "passed (0.1.2)",
+    "main_dit_only": "passed",
+    "token_refiner_excluded": "passed",
+    "audio_range_context_and_reset": "passed",
+    "invalid_audio_range_fail_closed": "passed",
+    "early_and_late_runtime_conflicts": "passed",
+    "source_write_api_absent": "passed",
+    "legacy_origin_patch_restore_roundtrip": "passed",
+    "legacy_origin_to_te_patch_restore_roundtrip": "passed"
   }
 }

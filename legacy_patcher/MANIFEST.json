@@ -1,0 +1,68 @@
+{
+  "package": "minimax-h3-v100-legacy-source-patcher",
+  "release": "pre-0.1.2 source-modifying toolchain archived by v0.1.2",
+  "profile": "Audio-safe MiniMax H3 V100 patch: FP16 resident QKV and text/video attention; FP32 audio attention, Q/K norm, RoPE, output projection, MLP and residual",
+  "compatibility": "Adapted for the updated MiniMax audio carry/sampler path in ComfyUI 0.31.1",
+  "generated_date": "2026-08-11",
+  "files": {
+    "_patch_core.py": {
+      "bytes": 30308,
+      "sha256": "4ba0816adae08313e148487b48624c8c3a5f10b95e51d8777c395f89b6aa1954"
+    },
+    "LICENSE": {
+      "bytes": 35149,
+      "sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986"
+    },
+    "NOTICE.md": {
+      "bytes": 3570,
+      "sha256": "38538dfef1da0d7f3494a27a87686b6c30855bfdc131460857ad9c3f504cb27e"
+    },
+    "patch_h3_origin_v100.bat": {
+      "bytes": 1323,
+      "sha256": "d808ba779622b20e2752895ce7e17ab56ca8d134ac0e6fe788f3abbc2111c8c3"
+    },
+    "patch_h3_origin_v100.py": {
+      "bytes": 226,
+      "sha256": "70d676dde67ae85154a9a2f7988d1f0f10c7e8ad4099061444b81ba42b7c4762"
+    },
+    "patch_te_v100.bat": {
+      "bytes": 1509,
+      "sha256": "7fa845c374c5ed832543f70a6bb1501035e56327bbc7a7dc821a30c43ab17382"
+    },
+    "patch_te_v100.py": {
+      "bytes": 247,
+      "sha256": "1cf4a0d4b4bad5c402bffd21b224c7d44b02aa1d3dc08c57ed9bb3c93797a784"
+    },
+    "restore_h3_origin_v100.bat": {
+      "bytes": 278,
+      "sha256": "3d77a96bc3122f0dddcf2ff53e8fa01d4be12a84df79f09fe17eaba3cb80d0a3"
+    },
+    "restore_te_v100.bat": {
+      "bytes": 1578,
+      "sha256": "97af485d1f62350e7b7bc71b60c028c91766a506d0cdad36ec389c4e1450b8a2"
+    },
+    "sources/origin_v100/model.py": {
+      "bytes": 36622,
+      "sha256": "0bfd99dfc298cf33a44d70de0f4e1521120d665fa2d15efbd24a0963d350937e"
+    },
+    "sources/te_v100/model.py": {
+      "bytes": 37871,
+      "sha256": "0164f795ae24a72f18a35846227148bde16b01dca70d63f3e40bf9fcf70cdf8e"
+    }
+  },
+  "known_inputs": {
+    "origin_sha256": "1c9828ec3d38ac01398e45b1edf8d7db38fcc8148c5eb3ba8fb92b762147d0ce",
+    "te_normalized_sha256": "6f2077ebbcb424b676016ccb2711d6cb9ad3f91ab54e7fdf130f6b9bbe6ee9cf"
+  },
+  "known_outputs": {
+    "origin_sha256": "0bfd99dfc298cf33a44d70de0f4e1521120d665fa2d15efbd24a0963d350937e",
+    "te_sha256": "0164f795ae24a72f18a35846227148bde16b01dca70d63f3e40bf9fcf70cdf8e",
+    "te_from_origin_sha256": "0164f795ae24a72f18a35846227148bde16b01dca70d63f3e40bf9fcf70cdf8e"
+  },
+  "runtime_validation": {
+    "origin_profile": "passed",
+    "te_profile": "passed",
+    "audio": "normal",
+    "resident_fp16_qkv_additional_speedup": "approximately 5%-10%"
+  }
+}
