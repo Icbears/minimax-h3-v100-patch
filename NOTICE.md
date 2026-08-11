@@ -1,63 +1,48 @@
 # Provenance and validation notice
 
-## Current supported input
+## Release
 
-- ComfyUI MiniMax H3 origin `model.py` with the updated audio carry/sampler behavior
-  - Size: 33,548 bytes
-  - SHA-256: `1c9828ec3d38ac01398e45b1edf8d7db38fcc8148c5eb3ba8fb92b762147d0ce`
-  - Relevant upstream audio fix: ComfyUI commit `93cb5edb` (`Fix audio carry to wrappers`)
-- Clean TE-hooked layout derived from that exact origin source
-  - Size: 34,797 bytes
-  - Normalized SHA-256: `6f2077ebbcb424b676016ccb2711d6cb9ad3f91ab54e7fdf130f6b9bbe6ee9cf`
+- Package version: `0.1.2`
+- Default delivery: ComfyUI Custom Node loaded at runtime
+- Supported target used for structural and runtime validation: ComfyUI `0.31.1` MiniMax H3 with the updated audio carry/sampler path
+- Supported clean origin `model.py` SHA-256: `1c9828ec3d38ac01398e45b1edf8d7db38fcc8148c5eb3ba8fb92b762147d0ce`
+- Relevant upstream audio fix: ComfyUI commit `93cb5edb`
 
-The installer additionally requires exact structural anchors for the current Attention implementation, block-loop layout and audio carry path. Older MiniMax H3 sources without the updated audio path are refused.
+## Precision-profile provenance
 
-## Why the patch changed
+Version 0.1.2 preserves the existing audio-safe V100 profile:
 
-The previous release applied FP16 attention to the entire packed H3 sequence. With the updated ComfyUI 0.31.1 MiniMax audio path, including audio query rows in that FP16 attention operation can produce incorrect sound even though the unpatched source works normally.
+- FP16 resident QKV weights, QKV projection, and text/video attention in the main DiT blocks.
+- FP32 target/reference-audio attention, Q/K RMSNorm, RoPE, output projection, MLP, AdaLN, residual accumulation, and final heads.
+- Source behavior for the two token-refiner blocks.
 
-The current implementation keeps text/video attention in FP16 but recomputes target-audio and reference-audio query rows with FP32 attention. The QKV projection remains FP16, Q/K return to FP32 for RMSNorm and RoPE, and output projection, MLP, AdaLN, residuals and final heads remain FP32. The 50 main-DiT QKV weights are converted once and retained in FP16.
+The Custom Node changes only how this established profile is delivered. Import-time wrappers replace persistent edits to `comfy/ldm/minimax/model.py`.
 
-## V100 runtime validation
+## Runtime implementation
 
-The progressively tested candidates were:
+- `MiniMaxH3Model.__init__` enables the profile only on the main DiT blocks.
+- `MiniMaxH3Model._forward` and `PackedLayout.__init__` expose target/reference-audio row ranges through task-local runtime context.
+- `Attention.forward` performs the FP16 QKV/text-video work and recomputes audio query rows with FP32 attention.
+- `DiTBlock.forward`, `MLP.forward`, AdaLN, residual code, output projections, token refiners, and final heads are not replaced.
+- Method-ownership and structural checks refuse incompatible or stacked H3 runtime patches.
+- Missing/invalid audio row metadata fails closed to full FP32 attention for that call.
 
-- `02_qkv_weight_fp16/model.py`: audio-safe Attention plus FP16 QKV compute and resident FP16 QKV weights.
-- `03_plan1_te_hook/model.py`: the same precision profile plus the TE-Speed `block_loop` hook.
+## Validation completed on 2026-08-11
 
-The tester reported that both candidates produced valid video and normal audio. Resident FP16 QKV weights provided an additional approximate 5%–10% speed improvement, depending on the workload and offload behavior.
+- The user reported successful ComfyUI 0.31.1 V100 operation with normal output after testing the new Custom Node delivery.
+- Python AST parsing passed for the package, runtime implementation, and tests.
+- Dependency-free simulated-loader tests cover installation, version reporting, idempotence, main-block-only activation, token-refiner exclusion, audio-range capture/reset, invalid-range fail-closed behavior, early/late conflict refusal, and absence of source-file write APIs.
+- The supported clean origin text was reconstructed in memory from the verified bundled output; its SHA-256 matched the expected clean hash exactly.
+- No ComfyUI source file is modified by the Custom Node.
 
-The earlier benchmark remains useful as historical context:
+## Legacy patcher
 
-- Test case: 0.2 MP, 5 s, 24 fps
-- Environment: Windows 10, Tesla V100 32 GB, 150 W power limit
-- TE-Speed baseline: 317 s
-- Earlier mixed-precision profile: 206 s
+The earlier guarded source patchers, restore scripts, source snapshots, their original manifest, and their detailed provenance notice are retained under `legacy_patcher/`. They remain available for recovery, development, and users who explicitly need source-modifying installation, but the Custom Node is the recommended path for normal use.
 
-## Bundled V100 source snapshots
+## Acknowledgement
 
-- `sources/origin_v100/model.py`
-  - Size: 36,622 bytes
-  - SHA-256: `0bfd99dfc298cf33a44d70de0f4e1521120d665fa2d15efbd24a0963d350937e`
-- `sources/te_v100/model.py`
-  - Size: 37,871 bytes
-  - SHA-256: `0164f795ae24a72f18a35846227148bde16b01dca70d63f3e40bf9fcf70cdf8e`
+Thanks to [Amduraznak/minimax-h3-fp16-fix](https://github.com/Amduraznak/minimax-h3-fp16-fix) for demonstrating a practical ComfyUI Custom Node delivery pattern for MiniMax H3 acceleration. That project inspired the move away from persistent source edits. Version 0.1.2 retains this project's independently tested FP32-base precision boundary; this acknowledgement concerns the deployment approach.
 
-These files are generated by the current shared patch core. After removing only the module documentation string, their Python ASTs are identical to the corresponding V100-tested candidates `02_qkv_weight_fp16` and `03_plan1_te_hook`.
+## Licensing
 
-## Installer validation
-
-Validated on isolated copies of the supported current source:
-
-- Clean origin detection and exact current-source hash recognition.
-- Origin patch and origin-to-TE promotion plus patch.
-- Python AST parsing before and after every write.
-- Patched source AST equivalence with the two V100-tested candidates.
-- Audio carry/sampler anchor preservation.
-- Target/reference-audio FP32 Attention range markers.
-- FP16 QKV compute and resident-weight markers.
-- Repeated invocation produces no byte changes.
-- Guarded `--revert` restores the exact pre-install SHA-256 for both origin and TE installations.
-- The previous patch is detected as `legacy`, refused for in-place upgrade and allowed to use its matching guarded restore path.
-
-The development machine did not contain a V100, so runtime and performance claims come from the tester's V100 runs; installer and source validations were performed locally.
+SPDX-License-Identifier: GPL-3.0-only. See `LICENSE`. The acknowledged project is separately licensed by its author.

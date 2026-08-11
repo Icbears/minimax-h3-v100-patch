@@ -2,3 +2,4 @@ __pycache__/
 *.py[cod]
 *.tmp
 model.py.v100_*.bak
+*.zip

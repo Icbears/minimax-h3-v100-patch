@@ -1,140 +1,133 @@
-# MiniMax H3 V100 mixed-precision patchers
+# MiniMax H3 V100 mixed precision — Custom Node v0.1.2
 
 English | [简体中文](README_zh-CN.md)
 
-Two version-gated installers for the tested MiniMax H3 V100 mixed-precision profile:
+Version **0.1.2** delivers the tested MiniMax H3 V100 mixed-precision profile as a ComfyUI Custom Node. This is now the recommended installation method: it does not rewrite `comfy/ldm/minimax/model.py`, does not require a modified launch command, and can be removed by deleting one folder and restarting ComfyUI.
 
-- `patch_te_v100.bat` installs the TE-Speed version. On a supported clean origin file, it first installs the verified TE-Speed `block_loop` hooks and then applies the V100 patch.
-- `patch_h3_origin_v100.bat` patches the official/origin H3 `model.py` without those TE hooks.
-- `restore_te_v100.bat` restores the exact pre-patch TE backup.
-- `restore_h3_origin_v100.bat` restores the exact pre-patch origin backup.
+The Custom Node mode supports the updated MiniMax H3 audio carry/sampler structure in **ComfyUI 0.31.1**. The user has reported successful V100 operation after testing this runtime build.
 
-Do **not** run both patchers on the same file. The TE installer can promote a supported clean origin file to the TE layout; the origin installer still accepts only the official origin layout.
+The previous source-modifying installers are still available under [`legacy_patcher/`](legacy_patcher/) for recovery, development, and users who explicitly need them.
 
-## ComfyUI 0.31.1 audio compatibility update
+## Recommended Custom Node installation
 
-The previous patch release applied FP16 attention to the entire packed H3 sequence, including audio queries. With the updated MiniMax audio carry/sampler path in ComfyUI 0.31.1, that older precision boundary can produce incorrect audio even when the same unpatched `model.py` produces normal sound.
+### Before installing
 
-This update is adapted to the new audio path:
+Use a clean, unpatched ComfyUI `comfy/ldm/minimax/model.py`. If an earlier release of this project modified that file, first stop ComfyUI and restore it with the matching script:
 
-- Text/video attention queries remain accelerated in FP16.
-- Target-audio and reference-audio queries are recomputed with FP32 attention and overwrite only their rows before the output projection.
-- The current audio carry/sampler logic is preserved; `audio_vae.py` and VAE launch flags are not modified.
-- Main-DiT QKV compute and the 50 resident QKV weights use FP16. V100 testing found that resident FP16 QKV weights can provide a further roughly **5%–10%** speed improvement, depending on the workload and offload behavior.
+```bat
+legacy_patcher\restore_te_v100.bat "D:\ComfyUI\comfy\ldm\minimax\model.py"
+legacy_patcher\restore_h3_origin_v100.bat "D:\ComfyUI\comfy\ldm\minimax\model.py"
+```
 
-Both the origin profile and the TE-hooked profile passed the reported V100 video/audio tests. If the installer reports a `legacy` patch, run the matching `--revert`, update ComfyUI if necessary, and then apply this version. The legacy precision patch is intentionally not upgraded in place.
+The runtime extension intentionally refuses to stack on top of the old source patch or another H3 monkey patch.
+
+### Install
+
+1. Stop ComfyUI.
+2. Download or clone this repository.
+3. Put the complete repository folder under `ComfyUI/custom_nodes/`. The important layout is:
+
+   ```text
+   ComfyUI/
+   └─ custom_nodes/
+      └─ minimax-h3-v100-patch/
+         ├─ __init__.py
+         ├─ runtime_patch.py
+         ├─ README.md
+         └─ legacy_patcher/
+   ```
+
+4. Start ComfyUI normally. Do **not** add `--fp16-unet`, `--force-fp16`, or another precision flag for this profile.
+5. Confirm that the startup log contains:
+
+   ```text
+   [MiniMax H3 V100] v0.1.2 runtime profile installed: FP32 base + FP16 QKV/text-video attention + FP32 audio attention
+   [MiniMax H3 V100] no --fp16-unet flag is required; source files remain untouched
+   ```
+
+The first H3 model load also reports how many main DiT blocks were enabled. The extension adds no workflow node; existing MiniMax H3 workflows continue to be used normally.
+
+### Update or uninstall
+
+- Update: stop ComfyUI, replace this repository folder with the new version, and restart.
+- Uninstall: delete this repository folder from `custom_nodes` and restart. No ComfyUI source backup needs to be restored when only the Custom Node mode was used.
+
+## Precision split
+
+The 50 main DiT blocks use the established FP32-base profile:
+
+- FP16: resident fused-QKV weights, fused QKV projection, and text/video attention queries.
+- FP32: target/reference-audio attention queries, Q/K RMSNorm, RoPE, attention output projection, MLP, AdaLN, residual accumulation, and final output heads.
+- Source compute path: the two token-refiner blocks.
+
+Audio FP32 attention receives Q/K/V values produced by the FP16 QKV projection, while the audio attention operation itself is FP32. The profile activates only for CUDA FP32 main-block input during inference. CPU, BF16, global-FP16, and training calls delegate to the source implementation.
+
+## Runtime safety
+
+- Checks the current `Attention`, `DiTBlock`, `MLP`, `MiniMaxH3Model`, and `PackedLayout` structure before installation.
+- Refuses source-level V100 patches and other extensions that already own critical H3 methods.
+- Rechecks for extensions loaded later and keeps new model instances unmodified if a conflict appears.
+- Installs idempotently.
+- Missing or invalid audio row metadata fails closed to full FP32 attention for that call.
+- QKV weights outside FP32/FP16 are not force-converted; that block returns to the source path.
+- Does not open, replace, rename, or write any ComfyUI source file.
+
+This runtime build targets the ComfyUI 0.31.1 H3 structure containing the updated audio carry/sampler path and `PackedLayout.segments`. A future ComfyUI internal refactor may cause an intentional automatic disable instead of an unsafe partial patch.
 
 ## Performance evidence
 
-Test case supplied by the V100 tester: 0.2 MP, 5 s, 24 fps.
-
-Test environment: Windows 10, NVIDIA Tesla V100 32 GB, with the GPU power limit set to 150 W. The baseline already included the TE-Speed optimization. Better cooling and a higher power limit may provide additional performance; operation at 300 W is expected to be faster, but has not yet been benchmarked and is not included in the results below.
+Earlier V100 test case: 0.2 MP, 5 s, 24 fps. Environment: Windows 10, NVIDIA Tesla V100 32 GB, 150 W power limit; the baseline already included TE-Speed.
 
 | Profile | Time | Change from baseline | Result |
 |---|---:|---:|---|
 | TE-Speed baseline | 317 s | — | Passed |
-| **MiniMax H3 V100 mixed-precision patch** | **206 s** | **35.0% faster / 1.54x** | **Passed** |
+| **MiniMax H3 V100 mixed-precision profile** | **206 s** | **35.0% faster / 1.54x** | **Passed** |
 
-The 317 s / 206 s figures are the earlier V100 benchmark for the core mixed-precision approach. They demonstrate the potential of the retained video-side FP16 path, but they are not presented as an exact end-to-end timing for this audio-compatible update.
+These figures demonstrate the earlier core precision profile and are not a universal timing guarantee for every ComfyUI workflow. In the later audio-safe build, resident FP16 QKV weights provided an additional reported improvement of approximately **5%–10%** over recasting those weights during inference. Actual results depend on workload, backend, offload behavior, power limit, and build.
 
-In the current audio-compatible build, keeping QKV weights resident in FP16 provided an additional reported improvement of approximately **5%–10%** over the otherwise identical version that recast those weights during inference. No single absolute timing is claimed for that follow-up test.
+For the first A/B test, keep the seed, prompt, model, sampler, steps, resolution, frame count, and attention backend identical. Disable unrelated TeaCache, SageAttention, compilation, global FP16, and FP16-accumulation changes; discard one warm-up run and record at least three measured runs. Stop at the first black frame, NaN, audio defect, or error.
 
-Results are workload-, backend- and build-dependent; neither 1.54x nor the additional 5%–10% is a universal guarantee.
+## Legacy source patcher
 
-## Precision split
+The pre-0.1.2 source-modifying package is preserved under [`legacy_patcher/`](legacy_patcher/). It contains:
 
-The 50 main DiT blocks use:
+- guarded origin and TE-Speed BAT/Python installers;
+- guarded restore scripts and exact adjacent-backup handling;
+- origin/TE structure detection, AST validation, idempotence, and SHA-256 checks;
+- complete V100 source snapshots for development and manual porting;
+- its own manifest and provenance notice.
 
-- FP16: resident fused-QKV weights, fused QKV projection, and text/video attention queries.
-- FP32: target/reference-audio attention queries, Q/K RMSNorm, RoPE, attention output projection, MLP, AdaLN, residual accumulation and final output heads.
-- Source compute dtype: the two token-refiner blocks.
+The Custom Node is recommended for normal use. Use the legacy patcher only when you intentionally need a modified `model.py`, a TE `block_loop` source conversion, recovery from an earlier patch, or inspectable full source snapshots.
 
-The audio FP32 attention receives Q/K/V values produced by the FP16 QKV projection, but performs the audio attention operation itself in FP32. The patch activates only when the incoming main-block tensor is CUDA FP32. BF16 and already-FP16 paths retain the source behavior.
-
-## Bundled source files
-
-Complete V100-accelerated `model.py` sources are included for developers who want to inspect, adapt or integrate the changes into their own ComfyUI builds:
-
-- [`sources/origin_v100/model.py`](sources/origin_v100/model.py): current official/origin MiniMax H3 structure plus the tested audio-safe V100 profile; no TE-Speed `block_loop` hook.
-- [`sources/te_v100/model.py`](sources/te_v100/model.py): TE-Speed `block_loop` hooks plus the same audio-safe V100 profile.
-
-Both sources are derived from the updated ComfyUI MiniMax H3 implementation containing the audio carry fix from commit [`93cb5edb`](https://github.com/Comfy-Org/ComfyUI/commit/93cb5edb). The supported clean origin `model.py` has SHA-256 `1c9828ec3d38ac01398e45b1edf8d7db38fcc8148c5eb3ba8fb92b762147d0ce`.
-
-For a matching ComfyUI build, either file can be used as a drop-in `comfy/ldm/minimax/model.py` after making a backup. For newer, older or locally modified builds, use these files as reference sources and port the Attention precision changes and, when desired, the TE block-loop hooks into the local implementation instead of blindly overwriting it. Stop ComfyUI before replacing the file and validate the resulting Python syntax and model output before production use. These source copies are provided for manual development; the guarded BAT/Python installers remain the safer option for the supported build.
-
-## One-click Windows usage
-
-1. Stop ComfyUI.
-2. Choose the BAT matching the active `model.py`:
-   - TE-Speed version required (clean origin or already TE-hooked): `patch_te_v100.bat`
-   - Official/origin H3 file: `patch_h3_origin_v100.bat`
-3. Double-click the selected BAT. This customized build defaults to `C:\Users\Administrator\ComfyUI-Installs\ComfyUI\ComfyUI\comfy\ldm\minimax\model.py`; another `model.py` can still be dragged onto the BAT.
-4. Check that the console reports `Patched SHA-256`, then restart ComfyUI.
-
-To return to the pre-patch file, stop ComfyUI and run the matching restore BAT. If TE installation started from origin, `restore_te_v100.bat` restores that exact origin file; if it started from an existing TE file, it restores that exact TE file.
-
-The BAT launchers try, in order: `COMFYUI_PYTHON`, a nearby portable `python_embeded\python.exe`, the Windows `py -3` launcher, then `python` from `PATH`.
-
-Command-line examples:
+Windows entry points:
 
 ```bat
-patch_te_v100.bat "D:\ComfyUI\comfy\ldm\minimax\model.py"
-patch_te_v100.bat "D:\ComfyUI\comfy\ldm\minimax\model.py" --check
-patch_te_v100.bat "D:\ComfyUI\comfy\ldm\minimax\model.py" --revert
-
-patch_h3_origin_v100.bat "D:\ComfyUI\comfy\ldm\minimax\model.py"
-patch_h3_origin_v100.bat "D:\ComfyUI\comfy\ldm\minimax\model.py" --check
-patch_h3_origin_v100.bat "D:\ComfyUI\comfy\ldm\minimax\model.py" --revert
-
-restore_te_v100.bat "D:\ComfyUI\comfy\ldm\minimax\model.py"
-restore_h3_origin_v100.bat "D:\ComfyUI\comfy\ldm\minimax\model.py"
+legacy_patcher\patch_te_v100.bat "D:\ComfyUI\comfy\ldm\minimax\model.py"
+legacy_patcher\patch_h3_origin_v100.bat "D:\ComfyUI\comfy\ldm\minimax\model.py"
+legacy_patcher\restore_te_v100.bat "D:\ComfyUI\comfy\ldm\minimax\model.py"
+legacy_patcher\restore_h3_origin_v100.bat "D:\ComfyUI\comfy\ldm\minimax\model.py"
 ```
 
-The scripts can also auto-locate common ComfyUI/portable layouts when launched from inside the installation. Use `--comfy-ui <root>` or `--model-file <file>` when more than one installation exists.
-
-## Backups and safety gates
-
-Before the first write, the installers make an exact adjacent backup:
-
-- TE variant: `model.py.v100_te.bak` (the exact pre-install file, which may be origin or TE)
-- Origin variant: `model.py.v100_origin.bak`
-
-Safety behavior:
-
-- Exact TE/origin layout detection before patching; origin-to-TE promotion runs only when both verified TE conversion anchors match.
-- Exact supported `Attention.forward` anchor required.
-- Requires the updated MiniMax audio carry/sampler anchor; older source layouts are refused and must be updated first.
-- Detects the previous audio-incompatible V100 patch as `legacy`; it can be safely reverted but is not silently upgraded in place.
-- Refuses partial TE hooks, partial V100 patches and wrong-target patchers.
-- Refuses to overwrite a differing/stale backup.
-- Writes through a temporary file followed by an atomic replacement.
-- Python AST syntax validation before and after the write.
-- SHA-256 printed for the input, patched output and restored output.
-- Repeated patch calls are idempotent.
-- `--revert` works only when the active file is recognized as V100-patched and its matching clean backup is valid.
-- The dedicated restore BATs call that same guarded `--revert` path; they do not perform an unchecked file copy.
-
-## Benchmarking guidance
-
-- Keep the H3 compute/residual stream FP32; do not combine the first comparison with global `--force-fp16` or BF16.
-- Keep seed, prompt, sampler, steps, resolution, frames, checkpoint and attention backend identical.
-- Disable unrelated TeaCache, SageAttention, compilation and FP16-accumulation changes for the initial A/B test.
-- Discard one warm-up run and time at least three measured runs.
-- Record total time, seconds per step, peak VRAM, video validity, audio validity and the first warning/error.
-
-## Python entry points
-
-The BAT files are thin Windows launchers. The dependency-free Python installers work directly on Windows or Linux:
+Python entry points:
 
 ```text
-python patch_te_v100.py /path/to/ComfyUI
-python patch_h3_origin_v100.py /path/to/ComfyUI
+python legacy_patcher/patch_te_v100.py /path/to/ComfyUI
+python legacy_patcher/patch_h3_origin_v100.py /path/to/ComfyUI
 ```
 
-Python 3.8 or newer is recommended.
+Development source snapshots:
 
-## Scope and attribution
+- [`legacy_patcher/sources/origin_v100/model.py`](legacy_patcher/sources/origin_v100/model.py): official/origin loop plus the audio-safe V100 profile.
+- [`legacy_patcher/sources/te_v100/model.py`](legacy_patcher/sources/te_v100/model.py): TE-Speed block-loop hooks plus the same profile.
 
-This is a community mixed-precision patch, not an official MiniMax, TE-Speed or ComfyUI release. It modifies the upstream ComfyUI MiniMax H3 model implementation and preserves the TE hooks when the TE-specific installer is used. See `NOTICE.md` for source hashes and validation provenance.
+The supported clean origin source is derived from the ComfyUI implementation containing audio fix [`93cb5edb`](https://github.com/Comfy-Org/ComfyUI/commit/93cb5edb) and has SHA-256 `1c9828ec3d38ac01398e45b1edf8d7db38fcc8148c5eb3ba8fb92b762147d0ce`. See [`legacy_patcher/NOTICE.md`](legacy_patcher/NOTICE.md) for the original patcher evidence and [`NOTICE.md`](NOTICE.md) for the v0.1.2 runtime boundary.
 
-SPDX license identifier: `GPL-3.0-only`, matching the upstream ComfyUI license used by the modified implementation. See `LICENSE`.
+## Acknowledgements
+
+Special thanks to [Amduraznak/minimax-h3-fp16-fix](https://github.com/Amduraznak/minimax-h3-fp16-fix). That project demonstrated that MiniMax H3 acceleration could be delivered cleanly through a ComfyUI Custom Node and inspired the v0.1.2 move away from persistent source edits.
+
+This project keeps its existing, independently tested **FP32 ocean + FP16 hotspot islands** precision strategy; the acknowledgement is specifically for the Custom Node delivery approach. Thanks also to ComfyUI, MiniMax, and the TE-Speed contributors whose work forms the surrounding ecosystem.
+
+## Scope and license
+
+This is a community mixed-precision extension, not an official MiniMax, TE-Speed, ComfyUI, or acknowledged-project release. SPDX license identifier: `GPL-3.0-only`; see [`LICENSE`](LICENSE). The acknowledged project is separately licensed by its author.
