@@ -2,6 +2,8 @@
 
 [English](README.md) | 简体中文
 
+V**0.1.2**在**ComfyUI 0.32.0**下也可以运行
+
 从 **0.1.2** 开始，本项目将经过 V100 实测的 MiniMax H3 混合精度方案改为 ComfyUI Custom Node 运行时加载。这是现在推荐的安装方式：不再改写 `comfy/ldm/minimax/model.py`，不需要修改启动命令，删除一个文件夹并重启即可卸载。
 
 新版 Custom Node 已适配 **ComfyUI 0.31.1** 更新后的 MiniMax H3 audio carry/sampler 结构；用户已在 V100 上完成实际运行测试并确认工作正常。
