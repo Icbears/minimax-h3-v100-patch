@@ -1,7 +1,7 @@
 # MiniMax H3 V100 mixed precision — Custom Node v0.1.2
 
 English | [简体中文](README_zh-CN.md)
-V **0.1.2* also works with ComfyUI 0.32.0
+V**0.1.2** also works with ComfyUI 0.32.0
 
 Version **0.1.2** delivers the tested MiniMax H3 V100 mixed-precision profile as a ComfyUI Custom Node. This is now the recommended installation method: it does not rewrite `comfy/ldm/minimax/model.py`, does not require a modified launch command, and can be removed by deleting one folder and restarting ComfyUI.
 
