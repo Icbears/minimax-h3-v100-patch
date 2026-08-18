@@ -1,12 +1,12 @@
-# MiniMax H3 V100 mixed precision — Custom Node v0.1.2
+# MiniMax H3 V100 mixed precision — Custom Node v0.1.3
 
 English | [简体中文](README_zh-CN.md)
 
-V**0.1.2** also works with ComfyUI 0.32.0
+**Version 0.1.3 reduces resident VRAM usage while keeping inference performance unchanged. It has been successfully run with ComfyUI 0.33.2.**
 
-Version **0.1.2** delivers the tested MiniMax H3 V100 mixed-precision profile as a ComfyUI Custom Node. This is now the recommended installation method: it does not rewrite `comfy/ldm/minimax/model.py`, does not require a modified launch command, and can be removed by deleting one folder and restarting ComfyUI.
+Version **0.1.3** promotes the successful L3 mixed-precision profile to the official Custom Node release. Model weights now remain FP16 through ComfyUI loading, prefetch and offload, while numerically sensitive residual, audio and output paths retain FP32 safety islands.
 
-The Custom Node mode supports the updated MiniMax H3 audio carry/sampler structure in **ComfyUI 0.31.1**. The user has reported successful V100 operation after testing this runtime build.
+The Custom Node does not rewrite `comfy/ldm/minimax/model.py`, does not require a modified launch command, and can be removed by deleting one folder and restarting ComfyUI. Earlier v0.1.2 builds were also reported working on ComfyUI 0.31.1 and 0.32.0.
 
 The previous source-modifying installers are still available under [`legacy_patcher/`](legacy_patcher/) for recovery, development, and users who explicitly need them.
 
@@ -43,8 +43,8 @@ The runtime extension intentionally refuses to stack on top of the old source pa
 5. Confirm that the startup log contains:
 
    ```text
-   [MiniMax H3 V100] v0.1.2 runtime profile installed: FP32 base + FP16 QKV/text-video attention + FP32 audio attention
-   [MiniMax H3 V100] no --fp16-unet flag is required; source files remain untouched
+   [MiniMax H3 V100] v0.1.3 runtime profile installed: v0.1.3: native FP16 storage/branches + FP32 safety islands
+   [MiniMax H3 V100] registered native FP16 H3 loading for CUDA capability 7.0 (Volta/V100); no --fp16-unet flag is required
    ```
 
 The first H3 model load also reports how many main DiT blocks were enabled. The extension adds no workflow node; existing MiniMax H3 workflows continue to be used normally.
@@ -54,15 +54,16 @@ The first H3 model load also reports how many main DiT blocks were enabled. The 
 - Update: stop ComfyUI, replace this repository folder with the new version, and restart.
 - Uninstall: delete this repository folder from `custom_nodes` and restart. No ComfyUI source backup needs to be restored when only the Custom Node mode was used.
 
-## Precision split
+## v0.1.3 memory and precision split
 
-The 50 main DiT blocks use the established FP32-base profile:
+- Native FP16 model storage through ComfyUI loading, prefetch and offload.
+- FP16 QKV, Q/K RMSNorm, RoPE and text/video attention in the 50 main DiT blocks.
+- FP32 target/reference-audio attention recomputation.
+- Scaled attention output projection: `/64 → FP16 out_proj → FP32 ×64`.
+- FP16 MLP `fc1`, FP32 SwiGLU, and scaled `fc2`: `/256 → FP16 fc2 → FP32 ×256`.
+- FP32 main residual stream, Block Norm, AdaLN/modulation, condition input, Token Refiner, final AdaLN and video/audio output heads.
 
-- FP16: resident fused-QKV weights, fused QKV projection, and text/video attention queries.
-- FP32: target/reference-audio attention queries, Q/K RMSNorm, RoPE, attention output projection, MLP, AdaLN, residual accumulation, and final output heads.
-- Source compute path: the two token-refiner blocks.
-
-Audio FP32 attention receives Q/K/V values produced by the FP16 QKV projection, while the audio attention operation itself is FP32. The profile activates only for CUDA FP32 main-block input during inference. CPU, BF16, global-FP16, and training calls delegate to the source implementation.
+Full-FP16 final heads remain deliberately excluded. Version 0.1.3 obtains its memory reduction from native FP16 residency rather than converting full weights inside `forward`; it does not retain a full FP32 weight mirror across blocks.
 
 ## Runtime safety
 
@@ -71,10 +72,13 @@ Audio FP32 attention receives Q/K/V values produced by the FP16 QKV projection, 
 - Rechecks for extensions loaded later and keeps new model instances unmodified if a conflict appears.
 - Installs idempotently.
 - Missing or invalid audio row metadata fails closed to full FP32 attention for that call.
-- QKV weights outside FP32/FP16 are not force-converted; that block returns to the source path.
+- Refuses a second extension or source patch that already exposes a conflicting H3 FP16 path.
+- Does not mutate `weight.data`, cache complete FP32 weight mirrors, or convert full weights inside `forward`.
 - Does not open, replace, rename, or write any ComfyUI source file.
 
-This runtime build targets the ComfyUI 0.31.1 H3 structure containing the updated audio carry/sampler path and `PackedLayout.segments`. A future ComfyUI internal refactor may cause an intentional automatic disable instead of an unsafe partial patch.
+This runtime build has been run successfully with the ComfyUI 0.33.2 H3 structure. A future ComfyUI internal refactor may cause an intentional automatic disable instead of an unsafe partial patch.
+
+This is the standalone v0.1.3 runtime profile. Do not stack it with TE-Speed or another H3 runtime/dtype patch; a separately reviewed adapter is required for combined execution.
 
 ## Performance evidence
 
@@ -85,7 +89,7 @@ Earlier V100 test case: 0.2 MP, 5 s, 24 fps. Environment: Windows 10, NVIDIA Tes
 | TE-Speed baseline | 317 s | — | Passed |
 | **MiniMax H3 V100 mixed-precision profile** | **206 s** | **35.0% faster / 1.54x** | **Passed** |
 
-These figures demonstrate the earlier core precision profile and are not a universal timing guarantee for every ComfyUI workflow. In the later audio-safe build, resident FP16 QKV weights provided an additional reported improvement of approximately **5%–10%** over recasting those weights during inference. Actual results depend on workload, backend, offload behavior, power limit, and build.
+These figures document the earlier core acceleration profile and are not a universal timing guarantee for every ComfyUI workflow. The v0.1.3 L3 validation reduced resident VRAM without changing the measured inference performance of its comparison build. Actual results depend on workload, backend, offload behavior, power limit, and software build.
 
 For the first A/B test, keep the seed, prompt, model, sampler, steps, resolution, frame count, and attention backend identical. Disable unrelated TeaCache, SageAttention, compilation, global FP16, and FP16-accumulation changes; discard one warm-up run and record at least three measured runs. Stop at the first black frame, NaN, audio defect, or error.
 
@@ -122,7 +126,7 @@ Development source snapshots:
 - [`legacy_patcher/sources/origin_v100/model.py`](legacy_patcher/sources/origin_v100/model.py): official/origin loop plus the audio-safe V100 profile.
 - [`legacy_patcher/sources/te_v100/model.py`](legacy_patcher/sources/te_v100/model.py): TE-Speed block-loop hooks plus the same profile.
 
-The supported clean origin source is derived from the ComfyUI implementation containing audio fix [`93cb5edb`](https://github.com/Comfy-Org/ComfyUI/commit/93cb5edb) and has SHA-256 `1c9828ec3d38ac01398e45b1edf8d7db38fcc8148c5eb3ba8fb92b762147d0ce`. See [`legacy_patcher/NOTICE.md`](legacy_patcher/NOTICE.md) for the original patcher evidence and [`NOTICE.md`](NOTICE.md) for the v0.1.2 runtime boundary.
+The supported clean origin source is derived from the ComfyUI implementation containing audio fix [`93cb5edb`](https://github.com/Comfy-Org/ComfyUI/commit/93cb5edb) and has SHA-256 `1c9828ec3d38ac01398e45b1edf8d7db38fcc8148c5eb3ba8fb92b762147d0ce`. See [`legacy_patcher/NOTICE.md`](legacy_patcher/NOTICE.md) for the original patcher evidence and [`NOTICE.md`](NOTICE.md) for the current runtime boundary.
 
 ## Acknowledgements
 

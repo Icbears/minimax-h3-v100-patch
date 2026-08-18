@@ -1,13 +1,11 @@
-"""ComfyUI loader entry point for the MiniMax H3 V100 mixed-precision profile."""
+"""ComfyUI entry point for the MiniMax H3 V100 v0.1.3 profile."""
 
-__version__ = "0.1.2"
+__version__ = "0.1.3"
 
 from .runtime_patch import PATCH_STATUS, install_patch
 
 
-# This extension changes H3 internals at import time and intentionally exposes no
-# workflow node. Keeping these mappings empty makes it a drop-in custom_nodes
-# extension without adding UI clutter.
+# Import-time runtime extension: existing H3 workflows need no extra UI node.
 NODE_CLASS_MAPPINGS = {}
 NODE_DISPLAY_NAME_MAPPINGS = {}
 
