@@ -1,105 +1,110 @@
 {
   "package": "minimax-h3-v100-patch",
-  "version": "0.1.2",
-  "default_delivery": "ComfyUI Custom Node runtime extension",
-  "profile": "FP32 base; FP16 resident QKV and text/video attention; FP32 audio attention, Q/K norm, RoPE, output projection, MLP, AdaLN and residual",
-  "compatibility": "ComfyUI 0.31.1 MiniMax H3 with the updated audio carry/sampler path",
-  "generated_date": "2026-08-11",
-  "runtime_status": "user-reported V100 runtime success on ComfyUI 0.31.1",
+  "version": "0.1.3",
+  "profile_id": "minimax-h3-v100-v013-native-fp16-branches",
+  "default_delivery": "standalone ComfyUI Custom Node runtime extension",
+  "profile": "native FP16 storage and attention/MLP branches; FP32 residual, audio recomputation, modulation, Token Refiner and final heads",
+  "compatibility": "user-reported V100 runtime success on ComfyUI 0.33.2",
+  "generated_date": "2026-08-18",
+  "runtime_status": "successful L3 V100 run with reduced resident VRAM and unchanged inference performance",
   "known_clean_origin_sha256": "1c9828ec3d38ac01398e45b1edf8d7db38fcc8148c5eb3ba8fb92b762147d0ce",
   "files": {
     ".gitignore": {
-      "bytes": 55,
-      "sha256": "c5670b4056c266e4118753354ae8e60c9f7021990901fdd0a5486c1ba0023f07"
+      "bytes": 60,
+      "sha256": "baa446a8c82fb3e01c62f3b415d0b82440606e27ed8e5286b04773a49db1a923"
     },
     "__init__.py": {
-      "bytes": 555,
-      "sha256": "a355ee8d6f945664389d25176a1ce955b32dbb5c24a0fc6d86b54a4d77ce016d"
+      "bytes": 418,
+      "sha256": "bc63357ca68525055f744a09a5e432c936643ef8d7df20bd8436e4fd4f22e472"
     },
     "LICENSE": {
       "bytes": 35149,
       "sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986"
     },
     "NOTICE.md": {
-      "bytes": 3262,
-      "sha256": "d89b37041b8e800569e55060fd8ccc8e311a6558187b1c173dddc8faaeb3673a"
+      "bytes": 3763,
+      "sha256": "f3aafb311147b9267254d2bd0e490d32dc2fff8dfc1054f1d1c96694a1fbfd30"
     },
     "README.md": {
-      "bytes": 7975,
-      "sha256": "c1f68af96254f4bf9b6782c452e5aaeaf147913b26d29512a95f5a0a365c36e9"
+      "bytes": 8586,
+      "sha256": "0ba0ab7116ad1e233b61e56a7b8091e156ca31d7055d23bf063f1ab62dc9a272"
     },
     "README_zh-CN.md": {
-      "bytes": 7762,
-      "sha256": "bc0897dfebf84f8ba512b5d7220fd69993fe6c43b23e463da355b8dc38fd670f"
+      "bytes": 8285,
+      "sha256": "01aca564e806f3ae4ed37b90ddc8e74eabb0db58f5e5e14bbe1d55d782c4f7c3"
     },
     "runtime_patch.py": {
-      "bytes": 16754,
-      "sha256": "29f66b811240459a78594a04ce1bd8843c0a79000c04f232b270fbc39cc06712"
+      "bytes": 23671,
+      "sha256": "217f7db113b1d33ab134ff8d75a9081bf421be50202f9db008a03d3ae41641d0"
     },
     "tests/test_runtime_patch.py": {
-      "bytes": 9898,
-      "sha256": "7fe7ae7b3157a1141817740cf366a2969884d91ea947c7132e3850b41e6937f2"
+      "bytes": 23093,
+      "sha256": "f83a9d45972278c1ca6b04cc8b1b54af5a837a9d3950a15d1c1a896ddb8c7b3d"
     },
     "legacy_patcher/_patch_core.py": {
-      "bytes": 30308,
-      "sha256": "4ba0816adae08313e148487b48624c8c3a5f10b95e51d8777c395f89b6aa1954"
+      "bytes": 31005,
+      "sha256": "90d9dd86a8f57f61e9fe61ef247196619a1e1b6dca68055da49729ebdf9c3330"
     },
     "legacy_patcher/LICENSE": {
-      "bytes": 35149,
-      "sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986"
+      "bytes": 35823,
+      "sha256": "230184f60bae2feaf244f10a8bac053c8ff33a183bcc365b4d8b876d2b7f4809"
     },
     "legacy_patcher/MANIFEST.json": {
-      "bytes": 2670,
-      "sha256": "2ab3f70b8ded4c8b50a1c77ab519e7db30d55003bfc4a1d331bd1c88a6e98e1f"
+      "bytes": 2738,
+      "sha256": "6138d06482654b95b4cdd1fee45da6037dfa31bf3523c579dd0174a839bd104e"
     },
     "legacy_patcher/NOTICE.md": {
-      "bytes": 3570,
-      "sha256": "38538dfef1da0d7f3494a27a87686b6c30855bfdc131460857ad9c3f504cb27e"
+      "bytes": 3633,
+      "sha256": "8639b89d16248ed0d925a5ac96d01cd809034c0bd2e6e4b438566fea54f8aaa3"
     },
     "legacy_patcher/patch_h3_origin_v100.bat": {
-      "bytes": 1323,
-      "sha256": "d808ba779622b20e2752895ce7e17ab56ca8d134ac0e6fe788f3abbc2111c8c3"
+      "bytes": 1370,
+      "sha256": "6b4fb48117b7d29ae7bb4ae5ddbd0d4236fc79327c18a41b7ff62de8e3e3ecd3"
     },
     "legacy_patcher/patch_h3_origin_v100.py": {
-      "bytes": 226,
-      "sha256": "70d676dde67ae85154a9a2f7988d1f0f10c7e8ad4099061444b81ba42b7c4762"
+      "bytes": 236,
+      "sha256": "cd5a62f4151cfac57eab149d216d830f188292a6ba31c39a72f4fc3d5d345483"
     },
     "legacy_patcher/patch_te_v100.bat": {
-      "bytes": 1509,
-      "sha256": "7fa845c374c5ed832543f70a6bb1501035e56327bbc7a7dc821a30c43ab17382"
+      "bytes": 1559,
+      "sha256": "443c315b4d2020ba6c4aaea2a9d09d6a0e2a6dbeefe9bbcf838effa806316501"
     },
     "legacy_patcher/patch_te_v100.py": {
-      "bytes": 247,
-      "sha256": "1cf4a0d4b4bad5c402bffd21b224c7d44b02aa1d3dc08c57ed9bb3c93797a784"
+      "bytes": 257,
+      "sha256": "2e7063f412cadec3d9eab4a363d3b779a23314f76c17af260d596cf5c57b0de0"
     },
     "legacy_patcher/restore_h3_origin_v100.bat": {
-      "bytes": 278,
-      "sha256": "3d77a96bc3122f0dddcf2ff53e8fa01d4be12a84df79f09fe17eaba3cb80d0a3"
+      "bytes": 291,
+      "sha256": "9efbb28523f8f2e21a49b5e068d4d79dbcade4f70b292d94dbbc7c966d6869ac"
     },
     "legacy_patcher/restore_te_v100.bat": {
-      "bytes": 1578,
-      "sha256": "97af485d1f62350e7b7bc71b60c028c91766a506d0cdad36ec389c4e1450b8a2"
+      "bytes": 1634,
+      "sha256": "920f248cd6776464bdaf6349fb4aa5049371eb90884008301d999d69c2ed0fd9"
     },
     "legacy_patcher/sources/origin_v100/model.py": {
-      "bytes": 36622,
-      "sha256": "0bfd99dfc298cf33a44d70de0f4e1521120d665fa2d15efbd24a0963d350937e"
+      "bytes": 37337,
+      "sha256": "a65a605f2b6476db1c4e25f42ccfd660620f53b72ddc1bc494a5ac14a2bd01f5"
     },
     "legacy_patcher/sources/te_v100/model.py": {
-      "bytes": 37871,
-      "sha256": "0164f795ae24a72f18a35846227148bde16b01dca70d63f3e40bf9fcf70cdf8e"
+      "bytes": 38605,
+      "sha256": "c96ede0c7c3f355deae37f445284d51dc6b2442529c9a48cadbf991449bd8637"
     }
   },
   "validation": {
     "python_ast": "passed",
-    "simulated_loader_tests": "passed (6 tests)",
-    "runtime_version_reporting": "passed (0.1.2)",
+    "simulated_loader_tests": "passed (14 tests)",
+    "runtime_version_reporting": "passed (0.1.3)",
+    "v100_only": "passed",
+    "native_fp16_registration": "passed",
     "main_dit_only": "passed",
     "token_refiner_excluded": "passed",
-    "audio_range_context_and_reset": "passed",
-    "invalid_audio_range_fail_closed": "passed",
+    "fp32_audio_and_final_safety": "passed",
+    "l3_compute_kernel_hashes": "passed",
     "early_and_late_runtime_conflicts": "passed",
+    "lazy_weight_mutation_absent": "passed",
+    "allocator_debug_telemetry_absent": "passed",
     "source_write_api_absent": "passed",
-    "legacy_origin_patch_restore_roundtrip": "passed",
-    "legacy_origin_to_te_patch_restore_roundtrip": "passed"
+    "legacy_origin_patch_restore_roundtrip": "carried forward unchanged from v0.1.2",
+    "legacy_origin_to_te_patch_restore_roundtrip": "carried forward unchanged from v0.1.2"
   }
 }

@@ -1,12 +1,12 @@
-# MiniMax H3 V100 混合精度 Custom Node v0.1.2
+# MiniMax H3 V100 混合精度 Custom Node v0.1.3
 
 [English](README.md) | 简体中文
 
-V**0.1.2**在**ComfyUI 0.32.0**下也可以运行
+**v0.1.3 新版优化了推理期间的常驻显存开销，同时保持推理性能不变；目前已在 ComfyUI 0.33.2 上成功运行。**
 
-从 **0.1.2** 开始，本项目将经过 V100 实测的 MiniMax H3 混合精度方案改为 ComfyUI Custom Node 运行时加载。这是现在推荐的安装方式：不再改写 `comfy/ldm/minimax/model.py`，不需要修改启动命令，删除一个文件夹并重启即可卸载。
+**v0.1.3** 将已经成功的 L3 混合精度方案提升为正式 Custom Node 版本。模型权重在 ComfyUI 加载、预取和卸载期间保持 FP16 常驻，同时为数值敏感的残差、音频和最终输出路径保留 FP32 安全岛。
 
-新版 Custom Node 已适配 **ComfyUI 0.31.1** 更新后的 MiniMax H3 audio carry/sampler 结构；用户已在 V100 上完成实际运行测试并确认工作正常。
+Custom Node 不再改写 `comfy/ldm/minimax/model.py`，不需要修改启动命令，删除一个文件夹并重启即可卸载。此前的 v0.1.2 也曾在 ComfyUI 0.31.1 和 0.32.0 上成功运行。
 
 此前会修改源码的安装器仍完整保存在 [`legacy_patcher/`](legacy_patcher/) 中，用于恢复、开发，以及确实需要源码补丁的场景。
 
@@ -43,8 +43,8 @@ legacy_patcher\restore_h3_origin_v100.bat "D:\ComfyUI\comfy\ldm\minimax\model.py
 5. 在启动日志中确认出现：
 
    ```text
-   [MiniMax H3 V100] v0.1.2 runtime profile installed: FP32 base + FP16 QKV/text-video attention + FP32 audio attention
-   [MiniMax H3 V100] no --fp16-unet flag is required; source files remain untouched
+   [MiniMax H3 V100] v0.1.3 runtime profile installed: v0.1.3: native FP16 storage/branches + FP32 safety islands
+   [MiniMax H3 V100] registered native FP16 H3 loading for CUDA capability 7.0 (Volta/V100); no --fp16-unet flag is required
    ```
 
 第一次加载 H3 模型时，日志还会显示已启用的主 DiT Block 数量。本扩展不会在工作流界面增加节点，现有 MiniMax H3 工作流照常使用。
@@ -54,15 +54,16 @@ legacy_patcher\restore_h3_origin_v100.bat "D:\ComfyUI\comfy\ldm\minimax\model.py
 - 更新：关闭 ComfyUI，用新版本替换本仓库文件夹，然后重启。
 - 卸载：从 `custom_nodes` 删除本仓库文件夹并重启。如果只使用过 Custom Node 模式，不需要恢复任何 ComfyUI 源码备份。
 
-## 精度分配
+## v0.1.3 显存与精度分配
 
-50 个主要 DiT Block 继续采用已经验证的“FP32 海洋 + FP16 热点岛屿”方案：
+- ComfyUI 加载、预取和卸载期间使用原生 FP16 模型存储。
+- 50 个主 DiT Block 的 QKV、Q/K RMSNorm、RoPE 及文本/视频 Attention 使用 FP16。
+- 目标/参考音频 Attention 使用 FP32 重算。
+- Attention 输出投影使用 `/64 → FP16 out_proj → FP32 ×64`。
+- MLP 使用 FP16 `fc1`、FP32 SwiGLU，以及 `/256 → FP16 fc2 → FP32 ×256`。
+- 主残差、Block Norm、AdaLN/调制、condition 输入、Token Refiner、最终 AdaLN 和视频/音频输出头保持 FP32。
 
-- FP16：常驻的融合 QKV 权重、融合 QKV 投影，以及文本/视频查询的 Attention。
-- FP32：目标/参考音频查询的 Attention、Q/K RMSNorm、RoPE、Attention 输出投影、MLP、AdaLN、残差累加和最终输出头。
-- 保持源码计算路径：两个 Token Refiner Block。
-
-音频 FP32 Attention 使用的 Q/K/V 数值来自 FP16 QKV 投影，但音频 Attention 运算本身使用 FP32。本方案只在推理期间、主 Block 输入为 CUDA FP32 时启用；CPU、BF16、全局 FP16 和训练路径均调用源码原始实现。
+仍然不启用全 FP16 final heads。v0.1.3 通过原生 FP16 常驻降低显存，而不是在 `forward` 内反复转换完整权重，也不会跨 Block 保留完整 FP32 权重镜像。
 
 ## 运行时安全机制
 
@@ -71,10 +72,13 @@ legacy_patcher\restore_h3_origin_v100.bat "D:\ComfyUI\comfy\ldm\minimax\model.py
 - 如果其他扩展在本项目之后加载，也会再次检查，并让新模型实例保持未修改状态。
 - 重复加载具有幂等性。
 - 音频行信息缺失或无效时，该次调用安全回退到完整 FP32 Attention。
-- QKV 权重不是 FP32/FP16 时不会强制转换，对应 Block 返回源码路径。
+- 检测到其他扩展或源码补丁已经暴露冲突的 H3 FP16 路径时拒绝叠加。
+- 不修改 `weight.data`，不缓存完整 FP32 权重镜像，也不在 `forward` 内转换完整权重。
 - 不会打开、替换、重命名或写入任何 ComfyUI 源码文件。
 
-当前版本面向包含新版 audio carry/sampler 和 `PackedLayout.segments` 的 ComfyUI 0.31.1 H3 结构。如果未来 ComfyUI 重构内部实现，本扩展会优先自动禁用，而不是执行不完整的危险补丁。
+本版本已经在 ComfyUI 0.33.2 的 H3 结构上成功运行。如果未来 ComfyUI 重构内部实现，本扩展会优先自动禁用，而不是执行不完整的危险补丁。
+
+这是独立运行的 v0.1.3 正式版。不要与 TE-Speed 或其他 H3 runtime/dtype patch 叠加；组合运行需要单独审核的适配版本。
 
 ## 性能依据
 
@@ -85,7 +89,7 @@ legacy_patcher\restore_h3_origin_v100.bat "D:\ComfyUI\comfy\ldm\minimax\model.py
 | TE-Speed 基线 | 317 秒 | — | 成功 |
 | **MiniMax H3 V100 混合精度方案** | **206 秒** | **加速 35.0% / 1.54 倍** | **成功** |
 
-这些数字用于说明早期核心精度方案，不代表所有 ComfyUI 工作流都能获得相同耗时。在后续音频安全版本中，相比推理期间反复转换 QKV 权重，QKV 权重常驻 FP16 额外获得了约 **5%–10%** 的实测提升。实际结果取决于工作负载、Attention 后端、卸载方式、功率限制和软件构建。
+这些数字用于记录早期核心加速方案，不代表所有 ComfyUI 工作流都能获得相同耗时。v0.1.3 的 L3 验证降低了推理期间常驻显存，同时没有改变其对照版本的实测推理性能。实际结果取决于工作负载、Attention 后端、卸载方式、功率限制和软件构建。
 
 第一次 A/B 测试应固定随机种子、提示词、模型、采样器、步数、分辨率、帧数和 Attention 后端，并关闭无关的 TeaCache、SageAttention、编译、全局 FP16 和 FP16 accumulation 改动。丢弃一次预热并至少记录三次正式运行；遇到第一处黑屏、NaN、音频异常或报错时立即停止继续扩大精度边界。
 
@@ -122,7 +126,7 @@ python legacy_patcher/patch_h3_origin_v100.py /path/to/ComfyUI
 - [`legacy_patcher/sources/origin_v100/model.py`](legacy_patcher/sources/origin_v100/model.py)：官方/origin Block Loop 加音频安全 V100 方案。
 - [`legacy_patcher/sources/te_v100/model.py`](legacy_patcher/sources/te_v100/model.py)：TE-Speed Block Loop 钩子加相同精度方案。
 
-受支持的干净 origin 源码基于包含 ComfyUI audio 修复 [`93cb5edb`](https://github.com/Comfy-Org/ComfyUI/commit/93cb5edb) 的实现，其 SHA-256 为 `1c9828ec3d38ac01398e45b1edf8d7db38fcc8148c5eb3ba8fb92b762147d0ce`。旧 patcher 的验证证据见 [`legacy_patcher/NOTICE.md`](legacy_patcher/NOTICE.md)，0.1.2 运行时边界见 [`NOTICE.md`](NOTICE.md)。
+受支持的干净 origin 源码基于包含 ComfyUI audio 修复 [`93cb5edb`](https://github.com/Comfy-Org/ComfyUI/commit/93cb5edb) 的实现，其 SHA-256 为 `1c9828ec3d38ac01398e45b1edf8d7db38fcc8148c5eb3ba8fb92b762147d0ce`。旧 patcher 的验证证据见 [`legacy_patcher/NOTICE.md`](legacy_patcher/NOTICE.md)，当前运行时边界见 [`NOTICE.md`](NOTICE.md)。
 
 ## 致谢
 
