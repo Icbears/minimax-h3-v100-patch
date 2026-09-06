@@ -18,8 +18,6 @@
 4. 正常启动 ComfyUI，无需添加工作流节点或 `--fp16-unet`。ComfyUI 的 `comfy/ldm/minimax/model.py` 应保持官方原版。
 5. 启动日志确认 `v0.1.4 runtime profile installed`；模型加载时确认 `enabled v0.1.4` 及主 DiT block 数量。
 
-本包不含 TE 适配版或旧式源码修改器。如果之前手动修改过 ComfyUI 源码，先恢复当前 ComfyUI 版本对应的官方文件。仅安装过 Custom Node 的情况下，卸载只需删除插件目录并重启。
-
 ## 精度策略
 
 - ComfyUI 原生 FP16 权重加载、预取及卸载。
