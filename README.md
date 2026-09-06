@@ -2,12 +2,12 @@
 
 English | [简体中文](README_zh-CN.md)
 
-Version 0.1.4 fixes `TypeError: _patched_final_forward() takes 5 positional arguments but 8 were given` while retaining the standalone L3 FP16 storage/branch profile and FP32 safety islands. This release has local structural/argument/dtype-flow validation; **V100 inference, output quality and performance are pending server testing**.
+Version 0.1.4 fixes `TypeError: _patched_final_forward() takes 5 positional arguments but 8 were given` in ComfyUI 0.34.5 while retaining the standalone v0.1.3 FP16 storage/branch profile and FP32 safety islands. This release has local structural/argument/dtype-flow validation.
 
 ## Install / update
 
 1. Fully stop ComfyUI.
-2. Remove the previous H3 extension folder from `custom_nodes` (including old `minimax-h3-v100-l3-clean`, `minimax-h3-v100-patch`, or preview copies). Remove `minimax-h3-v100-l3-te` and TE-Speed if installed. Keep only one H3 precision extension.
+2. Remove the previous H3 extension folder from `custom_nodes`.
 3. Extract `minimax-h3-v100-v0.1.4.zip` into the active `custom_nodes` directory. The ZIP has one top-level folder:
 
    ```text
