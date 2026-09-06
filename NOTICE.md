@@ -1,57 +1,13 @@
 # Provenance and validation notice
 
-## Release
+Version: 0.1.4. Date: 2026-09-06. Target: CUDA compute capability 7.0 (Volta/V100).
 
-- Package version: `0.1.3`
-- Default delivery: standalone ComfyUI Custom Node loaded at runtime
-- Target GPU: NVIDIA Tesla V100 / CUDA compute capability 7.0
-- Current reported compatibility: ComfyUI `0.33.2`
-- Profile: successful L3 native-FP16 storage/branch profile with FP32 safety islands
+This standalone Custom Node extends the v0.1.3 native-FP16 L3 release. Attention and MLP compute-function AST hashes are unchanged. FinalLayer now delegates upstream after promoting x and t_emb to FP32; all trailing positional and keyword arguments survive. This retains upstream modulation/PDD semantics. The DiT wrapper also supports the upstream optional attention override. Unknown parameters on reimplemented methods disable installation before dtype registration.
 
-## Precision-profile provenance
+Local validation: 23 dependency-free tests pass, including execution of real v0.34.5/PDD FinalLayer source bodies with trace tensors. PDD arithmetic is replaced by a spy; argument routing, schedule interval selection, per-stream shifts and FP32 flow are checked. No real PyTorch tensor, V100 inference, image/audio quality, memory or speed result is claimed for v0.1.4. Earlier 0.1.3 runtime results are historical only.
 
-Version 0.1.3 promotes the successful, debug-free L3 profile to the formal release:
+Upstream source fixtures are unchanged ComfyUI model.py snapshots retrieved on 2026-09-06. They are test data, never installed over ComfyUI. Their URLs and SHA-256 digests are recorded in tests/fixtures/PROVENANCE.json. The current-master snapshot was verified against fixed commit 15eb748b3ec5f8a0a2d470b7fb280e2d7579f916.
 
-- Native FP16 weights through ComfyUI loading, prefetch and offload.
-- FP16 QKV, Q/K RMSNorm, RoPE and text/video attention in the main DiT blocks.
-- FP32 target/reference-audio attention recomputation.
-- Power-of-two scaling around FP16 attention output projection and MLP `fc2`.
-- FP32 main residual, Block Norm, AdaLN/modulation, condition input, Token Refiner, SwiGLU intermediates, final AdaLN and video/audio heads.
+The v0.1.4 distribution excludes TE adapters, TE-Speed and legacy source patchers. It must be installed as the only H3 precision runtime extension. It does not rewrite ComfyUI source files, mutate weight.data or retain a full FP32 weight mirror. Preserve the FP32 safety paths during server validation.
 
-Full-FP16 final heads remain excluded. The implementation does not mutate `weight.data`, retain a complete FP32 weight mirror across blocks, or convert full weights inside `forward`.
-
-## Runtime implementation
-
-- Registers FP16 as a supported MiniMax H3 inference dtype before model construction so ComfyUI owns the FP16 weight lifecycle.
-- Enables the profile only on native-FP16 main DiT blocks; the Token Refiner remains outside the accelerated block profile.
-- Preserves target/reference-audio row ranges through task-local runtime context.
-- Uses `/64 → FP16 out_proj → FP32 ×64` and `/256 → FP16 fc2 → FP32 ×256`.
-- Forces `condition_proj` input and both final output heads through FP32 safety paths.
-- Refuses unsupported GPUs, unfamiliar ComfyUI H3 structures, source patches, pre-existing FP16 dtype providers and late runtime conflicts.
-- Contains no per-forward allocator telemetry, OOM diagnostic interception, cache clearing, CUDA synchronization or peak-counter reset.
-- Does not modify any ComfyUI source file.
-
-## Validation completed on 2026-08-18
-
-- The user reported that the L3 profile successfully reduced inference-period resident VRAM while keeping inference performance unchanged.
-- The user reported successful operation with ComfyUI 0.33.2.
-- Fourteen dependency-free tests cover version reporting, V100 restriction, native-FP16 registration, main-block/Token-Refiner isolation, dtype flow, FP32 audio/final safety, power-of-two scaling, idempotence, early/late conflict refusal, no lazy weight mutation, no source writes and no allocator debug telemetry.
-- The promoted release compute-kernel AST hashes match the successful L3 profile.
-
-Target-GPU results remain workload-specific; users should hold model, seed, prompt, sampler, steps, dimensions, attention backend, offload mode and power limit constant when comparing releases.
-
-## Compatibility boundary
-
-This is the standalone v0.1.3 runtime profile. It must not be stacked with TE-Speed or another H3 runtime/dtype patch. A separately reviewed adapter is required for combined execution.
-
-## Legacy patcher
-
-The earlier guarded source patchers, restore scripts, source snapshots, their original manifest and detailed provenance notice remain under `legacy_patcher/`. They are retained for recovery and development and are not the recommended v0.1.3 installation path.
-
-## Acknowledgement
-
-Thanks to [Amduraznak/minimax-h3-fp16-fix](https://github.com/Amduraznak/minimax-h3-fp16-fix) for demonstrating a practical ComfyUI Custom Node delivery pattern and the native-FP16/FP32-residual design with power-of-two projection scaling. This is a community extension, not an official MiniMax, ComfyUI, NVIDIA, PyTorch, TE-Speed or acknowledged-project release.
-
-## Licensing
-
-SPDX-License-Identifier: GPL-3.0-only. See `LICENSE`. The acknowledged project is separately licensed by its author.
+Thanks to ComfyUI, MiniMax and Amduraznak/minimax-h3-fp16-fix for the Custom Node pattern and related mixed-precision design. This is not an official release of those projects. ComfyUI-derived code and this extension are distributed under GPL-3.0-only; see LICENSE. The acknowledged project retains its own license.

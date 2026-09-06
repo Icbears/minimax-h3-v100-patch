@@ -1,4 +1,4 @@
-"""MiniMax H3 V100 v0.1.3 mixed-precision profile for ComfyUI.
+"""MiniMax H3 V100 v0.1.4 mixed-precision profile for ComfyUI.
 
 This release registers FP16 as a supported inference dtype for MiniMax H3
 before the model is instantiated. Main-block weights are therefore created,
@@ -28,27 +28,27 @@ import comfy.supported_models as supported_models
 from comfy.ldm.modules.attention import attention_pytorch, optimized_attention
 
 
-PROFILE_ID = "minimax-h3-v100-v013-native-fp16-branches"
-PROFILE_LABEL = "v0.1.3: native FP16 storage/branches + FP32 safety islands"
-PACKAGE_VERSION = "0.1.3"
+PROFILE_ID = "minimax-h3-v100-v014-native-fp16-branches"
+PROFILE_LABEL = "v0.1.4: native FP16 storage/branches + FP32 safety islands"
+PACKAGE_VERSION = "0.1.4"
 OUT_PROJ_SCALE = 64.0
 MLP_FC2_SCALE = 256.0
 
 _MODULE_PATCH_MARKER = "_minimax_h3_v100_custom_node_profile"
 _SUPPORTED_MODEL_PATCH_MARKER = "_minimax_h3_v100_supported_dtype_profile"
-_BLOCK_ENABLE_FLAG = "_minimax_h3_v100_v013_fp32_residual"
-_ATTENTION_ENABLE_FLAG = "_minimax_h3_v100_v013_audio_safe_attention"
-_MLP_ENABLE_FLAG = "_minimax_h3_v100_v013_scaled_mlp"
-_FINAL_ENABLE_FLAG = "_minimax_h3_v100_v013_fp32_final"
-_CONDITION_WRAPPED_FLAG = "_minimax_h3_v100_v013_fp32_condition"
+_BLOCK_ENABLE_FLAG = "_minimax_h3_v100_v014_fp32_residual"
+_ATTENTION_ENABLE_FLAG = "_minimax_h3_v100_v014_audio_safe_attention"
+_MLP_ENABLE_FLAG = "_minimax_h3_v100_v014_scaled_mlp"
+_FINAL_ENABLE_FLAG = "_minimax_h3_v100_v014_fp32_final"
+_CONDITION_WRAPPED_FLAG = "_minimax_h3_v100_v014_fp32_condition"
 _LAYOUT_RANGES_ATTR = "_minimax_h3_v100_fp32_audio_ranges"
 _OPTIONS_RANGES_KEY = "minimax_h3_fp32_audio_ranges"
 
 _AUDIO_RANGES: contextvars.ContextVar[tuple[tuple[int, int], ...]] = contextvars.ContextVar(
-    "minimax_h3_v100_v013_audio_ranges", default=()
+    "minimax_h3_v100_v014_audio_ranges", default=()
 )
 _CAPTURE_LAYOUT: contextvars.ContextVar[bool] = contextvars.ContextVar(
-    "minimax_h3_v100_v013_capture_layout", default=False
+    "minimax_h3_v100_v014_capture_layout", default=False
 )
 
 _ORIGINAL_SUPPORTED_DTYPES = None
@@ -140,6 +140,16 @@ def _validate_runtime_shape() -> tuple[bool, str]:
         return False, "unsupported MLP.forward signature"
     if not _signature_has(final_forward, ("self", "x", "t_emb", "video_seg", "audio_seg")):
         return False, "unsupported FinalLayer.forward signature"
+    # These methods are reimplemented, unlike the delegated FinalLayer. Reject
+    # added parameters rather than silently bypassing a new upstream feature.
+    for label, function, allowed in (
+        ("Attention.forward", attention_forward, {"self", "x", "rope_freqs", "transformer_options"}),
+        ("MLP.forward", mlp_forward, {"self", "x"}),
+        ("DiTBlock.forward", block_forward,
+         {"self", "x", "t_emb", "mod_segments", "rope_freqs", "transformer_options", "attention"}),
+    ):
+        if not set(inspect.signature(function).parameters).issubset(allowed):
+            return False, f"unsupported {label} signature; unknown parameters"
     if not _signature_has(model_init, ("self", "dtype", "operations")):
         return False, "unsupported MiniMaxH3Model.__init__ signature"
     if not _signature_has(model_forward, ("self", "x", "context", "transformer_options", "minimax_payload")):
@@ -188,7 +198,7 @@ def _validate_runtime_shape() -> tuple[bool, str]:
     if torch.bfloat16 not in current_dtypes or torch.float32 not in current_dtypes:
         return False, "unsupported MiniMaxH3 inference-dtype declaration"
 
-    return True, "supported ComfyUI 0.33.2 MiniMax H3 structure"
+    return True, "supported MiniMax H3 structure (legacy/PDD final forwarding)"
 
 
 def _ranges_from_layout(layout: Any) -> tuple[tuple[int, int], ...]:
@@ -305,13 +315,13 @@ def _patched_model_init(self, *args, **kwargs):
     ):
         _warn_once(
             "late-runtime-conflict",
-            "another H3 runtime extension loaded after v0.1.3; new H3 instances stay unmodified",
+            "another H3 runtime extension loaded after v0.1.4; new H3 instances stay unmodified",
         )
         return
     if getattr(self, "dtype", None) != torch.float16:
         _warn_once(
             "model-not-native-fp16",
-            f"H3 was instantiated as {getattr(self, 'dtype', None)}, not FP16; v0.1.3 is inactive for this instance",
+            f"H3 was instantiated as {getattr(self, 'dtype', None)}, not FP16; v0.1.4 is inactive for this instance",
         )
         return
 
@@ -319,20 +329,20 @@ def _patched_model_init(self, *args, **kwargs):
     if not blocks or not all(_block_shape_supported(block) for block in blocks):
         _warn_once(
             "unsupported-block",
-            "the main H3 block structure is unfamiliar; v0.1.3 is inactive for this instance",
+            "the main H3 block structure is unfamiliar; v0.1.4 is inactive for this instance",
         )
         return
     final_layer = getattr(self, "final_layer", None)
     if final_layer is None or not _final_shape_supported(final_layer):
         _warn_once(
             "unsupported-final-layer",
-            "the H3 FinalLayer structure is unfamiliar; v0.1.3 is inactive for this instance",
+            "the H3 FinalLayer structure is unfamiliar; v0.1.4 is inactive for this instance",
         )
         return
     if not _wrap_condition_projection(self):
         _warn_once(
             "missing-condition-proj",
-            "condition_proj could not be wrapped for FP32 overflow safety; v0.1.3 is inactive for this instance",
+            "condition_proj could not be wrapped for FP32 overflow safety; v0.1.4 is inactive for this instance",
         )
         return
 
@@ -454,23 +464,21 @@ def _patched_mlp_forward(self, x):
     return projected.to(dtype=torch.float32).mul_(MLP_FC2_SCALE)
 
 
-def _patched_final_forward(self, x, t_emb, video_seg, audio_seg):
+def _patched_final_forward(self, x, t_emb, video_seg, audio_seg, *args, **kwargs):
+    """Keep FP32 safety while retaining upstream modulation and PDD head logic.
+
+    Older ComfyUI calls have four inputs; PDD builds also pass sigma,
+    sample_sigmas and shifts. Delegate both forms without discarding arguments.
+    """
     enabled = (
         getattr(self, _FINAL_ENABLE_FLAG, False)
         and getattr(getattr(x, "device", None), "type", None) == "cuda"
         and not model_management.in_training
     )
-    if not enabled:
-        return _ORIGINAL_FINAL_FORWARD(self, x, t_emb, video_seg, audio_seg)
-
-    x = x.to(dtype=torch.float32)
-    t_emb = t_emb.to(dtype=torch.float32)
-    shift, scale = self.adaln_proj(t_emb)
-    va, vb, vrow = video_seg
-    aa, ab, arow = audio_seg
-    hv = self.norm(x[va:vb]) * (1.0 + scale[vrow]) + shift[vrow]
-    ha = self.norm(x[aa:ab]) * (1.0 + scale[arow]) + shift[arow]
-    return self.video_out(hv.to(dtype=torch.float32)), self.audio_out(ha.to(dtype=torch.float32))
+    if enabled:
+        x = x.to(dtype=torch.float32)
+        t_emb = t_emb.to(dtype=torch.float32)
+    return _ORIGINAL_FINAL_FORWARD(self, x, t_emb, video_seg, audio_seg, *args, **kwargs)
 
 
 def _patched_block_forward(
@@ -480,6 +488,7 @@ def _patched_block_forward(
     mod_segments,
     rope_freqs,
     transformer_options={},
+    attention=None,
 ):
     enabled = (
         getattr(self, _BLOCK_ENABLE_FLAG, False)
@@ -487,6 +496,8 @@ def _patched_block_forward(
         and not model_management.in_training
     )
     if not enabled:
+        # Do not send the new keyword to older ComfyUI implementations.
+        extra = {} if attention is None else {"attention": attention}
         return _ORIGINAL_BLOCK_FORWARD(
             self,
             x,
@@ -494,6 +505,7 @@ def _patched_block_forward(
             mod_segments,
             rope_freqs,
             transformer_options=transformer_options,
+            **extra,
         )
 
     if x.dtype != torch.float32:
@@ -503,7 +515,8 @@ def _patched_block_forward(
     h = mm._mod_scale_shift(self.norm1(x), shift_msa, scale_msa, mod_segments).to(
         dtype=torch.float16
     )
-    attention_out = self.attn(
+    attention_forward = self.attn if attention is None else attention
+    attention_out = attention_forward(
         h,
         rope_freqs=rope_freqs,
         transformer_options=transformer_options,

@@ -1,4 +1,4 @@
-"""Dependency-free structural and dtype-flow tests for v0.1.3."""
+"""Dependency-free structural and dtype-flow tests for v0.1.4."""
 
 from __future__ import annotations
 
@@ -154,10 +154,12 @@ class _FakeFinalLayer:
         self.audio_out = _FakeLinear("audio_out")
 
     def forward(self, x, t_emb, video_seg, audio_seg):
-        adaln_proj = self.adaln_proj
-        video_out = self.video_out
-        audio_out = self.audio_out
-        return x, t_emb, video_seg, audio_seg, adaln_proj, video_out, audio_out
+        shift, scale = self.adaln_proj(t_emb)
+        va, vb, vrow = video_seg
+        aa, ab, arow = audio_seg
+        hv = self.norm(x[va:vb]) * (1.0 + scale[vrow]) + shift[vrow]
+        ha = self.norm(x[aa:ab]) * (1.0 + scale[arow]) + shift[arow]
+        return self.video_out(hv.to(dtype="float32")), self.audio_out(ha.to(dtype="float32"))
 
 
 class _FakeBlock:
@@ -359,7 +361,7 @@ class RuntimePatchTests(unittest.TestCase):
         return model, supported
 
     def _load_runtime(self):
-        spec = importlib.util.spec_from_file_location("test_minimax_h3_v013_runtime", self.runtime_path)
+        spec = importlib.util.spec_from_file_location("test_minimax_h3_v014_runtime", self.runtime_path)
         module = importlib.util.module_from_spec(spec)
         sys.modules[spec.name] = module
         spec.loader.exec_module(module)
@@ -369,7 +371,7 @@ class RuntimePatchTests(unittest.TestCase):
         model_module, supported = self._install_fake_modules()
         runtime = self._load_runtime()
         self.assertTrue(runtime.PATCH_STATUS["installed"])
-        self.assertEqual(runtime.PACKAGE_VERSION, "0.1.3")
+        self.assertEqual(runtime.PACKAGE_VERSION, "0.1.4")
         self.assertEqual(
             supported.MiniMaxH3.supported_inference_dtypes,
             ["float16", "bfloat16", "float32"],
@@ -523,7 +525,7 @@ class RuntimePatchTests(unittest.TestCase):
         runtime = self._load_runtime()
         second = runtime.install_patch()
         self.assertTrue(second["installed"])
-        self.assertEqual(second["version"], "0.1.3")
+        self.assertEqual(second["version"], "0.1.4")
         self.assertEqual(second["reason"], "already installed")
 
     def test_late_conflict_keeps_new_instances_unmodified(self):
@@ -552,8 +554,7 @@ class RuntimePatchTests(unittest.TestCase):
         self.assertIn("out.squeeze(0) / OUT_PROJ_SCALE", source)
         self.assertIn("hidden / MLP_FC2_SCALE", source)
         self.assertIn("t_emb = t_emb.to(dtype=torch.float32)", source)
-        self.assertIn("self.video_out(hv.to(dtype=torch.float32))", source)
-        self.assertIn("self.audio_out(ha.to(dtype=torch.float32))", source)
+        self.assertIn("_ORIGINAL_FINAL_FORWARD(self, x, t_emb, video_seg, audio_seg, *args, **kwargs)", source)
 
     def test_runtime_code_has_no_source_file_write_api(self):
         source = self.runtime_path.read_text(encoding="utf-8")
@@ -576,8 +577,6 @@ class RuntimePatchTests(unittest.TestCase):
         expected = {
             "_patched_attention_forward": "d423ee3d5e20c19d4219c133a7c32459ef37a3d3135df6436ba47a4d90d4adb3",
             "_patched_mlp_forward": "aa8b8c08b1d41d7dd0a0ef3bfd124f72293130697865014443016ad8b336f9ef",
-            "_patched_final_forward": "96582fee3f8b3c661aabbaeb484f2e8e4efc2dfd589801e3648e413cd590d394",
-            "_patched_block_forward": "866c73f012a7f6c62e1c84a207832c184ff1d335f499d72da3200845b79496ee",
         }
 
         for name, expected_hash in expected.items():

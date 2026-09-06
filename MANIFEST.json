@@ -1,110 +1,66 @@
 {
   "package": "minimax-h3-v100-patch",
-  "version": "0.1.3",
-  "profile_id": "minimax-h3-v100-v013-native-fp16-branches",
-  "default_delivery": "standalone ComfyUI Custom Node runtime extension",
-  "profile": "native FP16 storage and attention/MLP branches; FP32 residual, audio recomputation, modulation, Token Refiner and final heads",
-  "compatibility": "user-reported V100 runtime success on ComfyUI 0.33.2",
-  "generated_date": "2026-08-18",
-  "runtime_status": "successful L3 V100 run with reduced resident VRAM and unchanged inference performance",
-  "known_clean_origin_sha256": "1c9828ec3d38ac01398e45b1edf8d7db38fcc8148c5eb3ba8fb92b762147d0ce",
+  "version": "0.1.4",
+  "profile_id": "minimax-h3-v100-v014-native-fp16-branches",
+  "install_folder": "minimax-h3-v100-l3-clean",
+  "generated_date": "2026-09-06",
+  "compatibility": "ComfyUI v0.34.5 and PDD source fixtures; see tests/fixtures/PROVENANCE.json",
+  "runtime_status": "V100 server inference, quality, speed and memory tests pending",
+  "validation": {
+    "python_ast": "passed",
+    "dependency_free_tests": 23,
+    "upstream_final_argument_and_dtype_flow": "passed",
+    "real_torch_numerical_tests": "not run",
+    "gpu_inference": "not run"
+  },
   "files": {
-    ".gitignore": {
-      "bytes": 60,
-      "sha256": "baa446a8c82fb3e01c62f3b415d0b82440606e27ed8e5286b04773a49db1a923"
-    },
     "__init__.py": {
       "bytes": 418,
-      "sha256": "bc63357ca68525055f744a09a5e432c936643ef8d7df20bd8436e4fd4f22e472"
+      "sha256": "501b469926b663b2e7cdada2476ad55eb5961e4156c6c10312899bbd6922a0b3"
+    },
+    "runtime_patch.py": {
+      "bytes": 24549,
+      "sha256": "5417d007fa3efbc6c62773b8a7b84e14899321f8d58af7c6c78b8a36ea2de484"
+    },
+    "README.md": {
+      "bytes": 4780,
+      "sha256": "15680bfcb0e305f253ac5989e4421ecd5d704cc4d1f63edd5a9616470d6c8188"
+    },
+    "README_zh-CN.md": {
+      "bytes": 4338,
+      "sha256": "e22cce3ddbe09c221408ef2ed39fe9666659a9d64701fd8317e042c49026cf37"
+    },
+    "NOTICE.md": {
+      "bytes": 1960,
+      "sha256": "b55c45b86935389617122fd65f0816b9af513cc2c3035b2c30019b7275fb7ca7"
     },
     "LICENSE": {
       "bytes": 35149,
       "sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986"
     },
-    "NOTICE.md": {
-      "bytes": 3763,
-      "sha256": "f3aafb311147b9267254d2bd0e490d32dc2fff8dfc1054f1d1c96694a1fbfd30"
-    },
-    "README.md": {
-      "bytes": 8586,
-      "sha256": "0ba0ab7116ad1e233b61e56a7b8091e156ca31d7055d23bf063f1ab62dc9a272"
-    },
-    "README_zh-CN.md": {
-      "bytes": 8285,
-      "sha256": "01aca564e806f3ae4ed37b90ddc8e74eabb0db58f5e5e14bbe1d55d782c4f7c3"
-    },
-    "runtime_patch.py": {
-      "bytes": 23671,
-      "sha256": "217f7db113b1d33ab134ff8d75a9081bf421be50202f9db008a03d3ae41641d0"
-    },
     "tests/test_runtime_patch.py": {
-      "bytes": 23093,
-      "sha256": "f83a9d45972278c1ca6b04cc8b1b54af5a837a9d3950a15d1c1a896ddb8c7b3d"
+      "bytes": 22998,
+      "sha256": "d6d2b9090c0384c50ca6e16a4ca68a9d298ea054bec4ae6c5f4abb580c2fe281"
     },
-    "legacy_patcher/_patch_core.py": {
-      "bytes": 31005,
-      "sha256": "90d9dd86a8f57f61e9fe61ef247196619a1e1b6dca68055da49729ebdf9c3330"
+    "tests/test_upstream_compat.py": {
+      "bytes": 8833,
+      "sha256": "fb78808935e2ab24b3626c9ab606197f0a0bffd6845b1fc9e0bab84f762f0cb8"
     },
-    "legacy_patcher/LICENSE": {
-      "bytes": 35823,
-      "sha256": "230184f60bae2feaf244f10a8bac053c8ff33a183bcc365b4d8b876d2b7f4809"
+    "tests/fixtures/model_v0345.py": {
+      "bytes": 37476,
+      "sha256": "b3f51bfd5c44962c3bbe09c3e16e34698a286c5279e050ea6c3defbb8434c34e"
     },
-    "legacy_patcher/MANIFEST.json": {
-      "bytes": 2738,
-      "sha256": "6138d06482654b95b4cdd1fee45da6037dfa31bf3523c579dd0174a839bd104e"
+    "tests/fixtures/model_pdd.py": {
+      "bytes": 40295,
+      "sha256": "648182d0368047ea77864494b2675ca3f09d0fc2c857f53bb989adff947e17c6"
     },
-    "legacy_patcher/NOTICE.md": {
-      "bytes": 3633,
-      "sha256": "8639b89d16248ed0d925a5ac96d01cd809034c0bd2e6e4b438566fea54f8aaa3"
+    "tests/fixtures/PROVENANCE.json": {
+      "bytes": 728,
+      "sha256": "90777d4161e59bd830546a3432d273c248a850b54c01a67d8d2268d35cfa9b3c"
     },
-    "legacy_patcher/patch_h3_origin_v100.bat": {
-      "bytes": 1370,
-      "sha256": "6b4fb48117b7d29ae7bb4ae5ddbd0d4236fc79327c18a41b7ff62de8e3e3ecd3"
-    },
-    "legacy_patcher/patch_h3_origin_v100.py": {
-      "bytes": 236,
-      "sha256": "cd5a62f4151cfac57eab149d216d830f188292a6ba31c39a72f4fc3d5d345483"
-    },
-    "legacy_patcher/patch_te_v100.bat": {
-      "bytes": 1559,
-      "sha256": "443c315b4d2020ba6c4aaea2a9d09d6a0e2a6dbeefe9bbcf838effa806316501"
-    },
-    "legacy_patcher/patch_te_v100.py": {
-      "bytes": 257,
-      "sha256": "2e7063f412cadec3d9eab4a363d3b779a23314f76c17af260d596cf5c57b0de0"
-    },
-    "legacy_patcher/restore_h3_origin_v100.bat": {
-      "bytes": 291,
-      "sha256": "9efbb28523f8f2e21a49b5e068d4d79dbcade4f70b292d94dbbc7c966d6869ac"
-    },
-    "legacy_patcher/restore_te_v100.bat": {
-      "bytes": 1634,
-      "sha256": "920f248cd6776464bdaf6349fb4aa5049371eb90884008301d999d69c2ed0fd9"
-    },
-    "legacy_patcher/sources/origin_v100/model.py": {
-      "bytes": 37337,
-      "sha256": "a65a605f2b6476db1c4e25f42ccfd660620f53b72ddc1bc494a5ac14a2bd01f5"
-    },
-    "legacy_patcher/sources/te_v100/model.py": {
-      "bytes": 38605,
-      "sha256": "c96ede0c7c3f355deae37f445284d51dc6b2442529c9a48cadbf991449bd8637"
+    "tools/build_release.py": {
+      "bytes": 3817,
+      "sha256": "4904924ec63cf7f335f5b38bdfb33bd5448962b5c820d842e26b117b8dfa21a5"
     }
-  },
-  "validation": {
-    "python_ast": "passed",
-    "simulated_loader_tests": "passed (14 tests)",
-    "runtime_version_reporting": "passed (0.1.3)",
-    "v100_only": "passed",
-    "native_fp16_registration": "passed",
-    "main_dit_only": "passed",
-    "token_refiner_excluded": "passed",
-    "fp32_audio_and_final_safety": "passed",
-    "l3_compute_kernel_hashes": "passed",
-    "early_and_late_runtime_conflicts": "passed",
-    "lazy_weight_mutation_absent": "passed",
-    "allocator_debug_telemetry_absent": "passed",
-    "source_write_api_absent": "passed",
-    "legacy_origin_patch_restore_roundtrip": "carried forward unchanged from v0.1.2",
-    "legacy_origin_to_te_patch_restore_roundtrip": "carried forward unchanged from v0.1.2"
   }
 }
