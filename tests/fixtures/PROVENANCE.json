@@ -1,0 +1,17 @@
+{
+  "retrieved_date": "2026-09-06",
+  "license": "GPL-3.0-only",
+  "purpose": "Unmodified upstream source fixtures; never installed over ComfyUI",
+  "files": {
+    "model_v0345.py": {
+      "url": "https://raw.githubusercontent.com/Comfy-Org/ComfyUI/v0.34.5/comfy/ldm/minimax/model.py",
+      "ref": "v0.34.5",
+      "sha256": "b3f51bfd5c44962c3bbe09c3e16e34698a286c5279e050ea6c3defbb8434c34e"
+    },
+    "model_pdd.py": {
+      "url": "https://raw.githubusercontent.com/Comfy-Org/ComfyUI/15eb748b3ec5f8a0a2d470b7fb280e2d7579f916/comfy/ldm/minimax/model.py",
+      "ref": "15eb748b3ec5f8a0a2d470b7fb280e2d7579f916",
+      "sha256": "648182d0368047ea77864494b2675ca3f09d0fc2c857f53bb989adff947e17c6"
+    }
+  }
+}

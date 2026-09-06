@@ -1,6 +1,6 @@
-"""ComfyUI entry point for the MiniMax H3 V100 v0.1.3 profile."""
+"""ComfyUI entry point for the MiniMax H3 V100 v0.1.4 profile."""
 
-__version__ = "0.1.3"
+__version__ = "0.1.4"
 
 from .runtime_patch import PATCH_STATUS, install_patch
 
